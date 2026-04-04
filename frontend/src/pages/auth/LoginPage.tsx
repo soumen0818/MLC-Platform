@@ -1,357 +1,165 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Navigate } from 'react-router-dom';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { LoadingSpinner } from '@/components/ui';
-import { Eye, EyeOff, ArrowRight, ShieldCheck, Mail, Lock } from 'lucide-react';
-import toast from 'react-hot-toast';
+import { getAuthRedirectPath } from '@/lib/authRedirect';
+import type { UserRole } from '@/types';
+import { ROLE_LABELS } from '@/types';
+
+import { ShieldCheck, Mail, Lock, ChevronDown } from 'lucide-react';
 
 export default function LoginPage() {
+  const { login, isLoading, isAuthenticated, user } = useAuthStore();
+  const navigate = useNavigate();
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const { login, isLoading } = useAuthStore();
-  const navigate = useNavigate();
+  const [role, setRole] = useState<UserRole | ''>('');
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  if (isAuthenticated && user) {
+    return <Navigate to={getAuthRedirectPath(user)} replace />;
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErrorMessage(null);
 
-    const normalizedEmail = email.trim();
-    if (!normalizedEmail || !password) {
-      setFormError('Email and password are required.');
+    if (!role) {
+      setErrorMessage('Please choose your role before signing in.');
       return;
     }
 
-    setFormError(null);
-
     try {
-      const { redirectTo } = await login(normalizedEmail, password);
+      const response = await login(email, password, role);
       toast.success('Welcome back!');
-      navigate(redirectTo);
+      navigate(response.redirectTo || getAuthRedirectPath(useAuthStore.getState().user), { replace: true });
     } catch (error: any) {
-      toast.error(error.message);
+      const backendError = error?.response?.data?.error || error?.response?.data?.message || error?.message;
+      const finalError = backendError || 'Login failed. Please check your credentials and ensure the correct role is selected.';
+      setErrorMessage(finalError);
+      toast.error(finalError);
     }
   };
 
+  const handleRoleSelect = (selectedRole: UserRole | string) => {
+    setRole(selectedRole as UserRole | '');
+    setErrorMessage(null);
+  };
+
   return (
-    <div
-      style={{ minHeight: '100vh', background: '#F4F4F5' }}
-      className="flex items-center justify-center px-4 py-10"
-    >
-      <div style={{ width: '100%', maxWidth: '420px' }}>
-
-        {/* ── Brand header ── */}
-        <div className="flex flex-col items-center gap-3 mb-8">
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="w-full max-w-[440px] bg-card rounded-[24px] border border-border shadow-[0_4px_24px_rgba(0,0,0,0.06)] p-9">
+        
+        {/* Brand Header */}
+        <div className="flex justify-center mb-8">
           <div className="flex items-center gap-3">
-            <div
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 14,
-                background: '#0A0A0A',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: '0 4px 14px rgba(0,0,0,0.25)',
-              }}
-            >
-              <svg width="24" height="24" viewBox="0 0 20 20" fill="none">
-                <circle cx="10" cy="5"  r="2.5" fill="#CCFF00" />
-                <circle cx="5"  cy="14" r="2.5" fill="white" fillOpacity="0.85" />
-                <circle cx="15" cy="14" r="2.5" fill="white" fillOpacity="0.85" />
-                <line x1="10" y1="7.5" x2="5"  y2="11.5" stroke="white" strokeWidth="1.5" strokeOpacity="0.6" />
-                <line x1="10" y1="7.5" x2="15" y2="11.5" stroke="white" strokeWidth="1.5" strokeOpacity="0.6" />
-              </svg>
+            <div className="w-11 h-11 rounded-xl bg-sidebar-bg flex items-center justify-center">
+              <ShieldCheck size={24} className="text-primary" />
             </div>
-            <span
-              style={{
-                fontSize: 26,
-                fontWeight: 800,
-                color: '#0A0A0A',
-                letterSpacing: '-0.03em',
-                fontFamily: "'Inter', system-ui, sans-serif",
-              }}
-            >
-              MLC Platform
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[20px] font-bold text-text-primary tracking-tight leading-none mb-1">MLC Platform</span>
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-[0.2em] leading-none">Partner Portal</span>
+            </div>
           </div>
-          <p
-            style={{
-              fontSize: 11,
-              fontWeight: 600,
-              color: '#A1A1AA',
-              letterSpacing: '0.16em',
-              textTransform: 'uppercase',
-            }}
+        </div>
+
+        {/* Header Text */}
+        <div className="mb-6 text-center">
+          <h1 className="text-2xl font-bold text-text-primary mb-2">Welcome Back</h1>
+          <p className="text-[14px] text-text-secondary">Sign in to your account and select your role to continue.</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+          {/* Role Selection */}
+          <div>
+            <label htmlFor="role" className="block text-[13px] font-semibold text-text-primary mb-2">Account Role</label>
+            <div className="relative">
+              <select
+                id="role"
+                value={role}
+                onChange={(e) => handleRoleSelect(e.target.value)}
+                required
+                className="w-full h-12 rounded-xl border border-border bg-background-secondary pl-4 pr-10 text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20 appearance-none cursor-pointer"
+              >
+                <option value="" disabled>Choose your role</option>
+                {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
+                  <option key={r} value={r}>
+                    {ROLE_LABELS[r]}
+                  </option>
+                ))}
+              </select>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none">
+                <ChevronDown size={16} className="text-text-muted" />
+              </div>
+            </div>
+          </div>
+
+          {/* Email */}
+          <div>
+            <label htmlFor="email" className="block text-[13px] font-semibold text-text-primary mb-2">Email address</label>
+            <div className="relative">
+              <div className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none">
+                <Mail size={16} className="text-text-muted" />
+              </div>
+              <input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+                className="w-full h-12 rounded-xl border border-border bg-background-secondary pl-10 pr-4 text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
+                placeholder="Ex. you@example.com"
+              />
+            </div>
+          </div>
+
+          {/* Password */}
+          <div>
+            <label htmlFor="password" className="block text-[13px] font-semibold text-text-primary mb-2">Password</label>
+            <div className="relative">
+              <div className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none">
+                <Lock size={16} className="text-text-muted" />
+              </div>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+                className="w-full h-12 rounded-xl border border-border bg-background-secondary pl-10 pr-4 text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
+                placeholder="••••••••"
+              />
+            </div>
+          </div>
+
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-xl p-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+              <p className="text-[13px] font-medium text-red-700 m-0 leading-tight">{errorMessage}</p>
+            </div>
+          )}
+
+          {/* Submit */}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full h-12 mt-2 rounded-xl bg-sidebar-bg text-white text-[15px] font-bold border-none cursor-pointer flex items-center justify-center gap-2 transition-all hover:bg-sidebar-bg/90 disabled:opacity-70 disabled:cursor-not-allowed outline-none focus:ring-[3px] focus:ring-primary/40"
           >
-            Multi-Level Commission Distribution
-          </p>
-        </div>
-
-        {/* ── Login Card ── */}
-        <div
-          style={{
-            background: '#ffffff',
-            borderRadius: 24,
-            border: '1px solid #E4E4E7',
-            boxShadow: '0 4px 24px rgba(0,0,0,0.06), 0 1px 4px rgba(0,0,0,0.04)',
-            padding: '36px 36px 28px 36px',
-          }}
-        >
-          {/* Heading */}
-          <div style={{ marginBottom: 28 }}>
-            <h2
-              style={{
-                fontSize: 22,
-                fontWeight: 700,
-                color: '#0A0A0A',
-                letterSpacing: '-0.02em',
-                marginBottom: 6,
-                fontFamily: "'Inter', system-ui, sans-serif",
-              }}
-            >
-              Welcome Back
-            </h2>
-            <p style={{ fontSize: 14, color: '#52525B', lineHeight: 1.6 }}>
-              Sign in with your agent credentials to access your dashboard securely.
-            </p>
-          </div>
-
-          {/* Form */}
-          <form onSubmit={handleSubmit} noValidate>
-
-            {/* Email field */}
-            <div style={{ marginBottom: 18 }}>
-              <label
-                htmlFor="login-email"
-                style={{
-                  display: 'block',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: '#0A0A0A',
-                  marginBottom: 8,
-                }}
-              >
-                Email Address
-              </label>
-              <div style={{ position: 'relative' }}>
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    left: 0,
-                    paddingLeft: 14,
-                    display: 'flex',
-                    alignItems: 'center',
-                    pointerEvents: 'none',
-                    width: 'fit-content',
-                  }}
-                >
-                  <Mail size={16} color="#A1A1AA" />
-                </div>
-                <input
-                  id="login-email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.com"
-                  autoComplete="username"
-                  style={{
-                    width: '100%',
-                    height: 46,
-                    borderRadius: 12,
-                    border: '1.5px solid #E4E4E7',
-                    background: '#F4F4F5',
-                    paddingLeft: 40,
-                    paddingRight: 14,
-                    fontSize: 14,
-                    color: '#0A0A0A',
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                    transition: 'border-color 0.15s, background 0.15s',
-                    fontFamily: "'Inter', system-ui, sans-serif",
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = '#0A0A0A';
-                    e.target.style.background = '#fff';
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = '#E4E4E7';
-                    e.target.style.background = '#F4F4F5';
-                  }}
-                />
-              </div>
-            </div>
-
-            {/* Password field */}
-            <div style={{ marginBottom: 24 }}>
-              <label
-                htmlFor="login-password"
-                style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#0A0A0A', marginBottom: 8 }}
-              >
-                Password
-              </label>
-              <div style={{ position: 'relative' }}>
-                <div
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    left: 0,
-                    paddingLeft: 14,
-                    display: 'flex',
-                    alignItems: 'center',
-                    pointerEvents: 'none',
-                    width: 'fit-content',
-                  }}
-                >
-                  <Lock size={16} color="#A1A1AA" />
-                </div>
-                <input
-                  id="login-password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  autoComplete="current-password"
-                  style={{
-                    width: '100%',
-                    height: 46,
-                    borderRadius: 12,
-                    border: '1.5px solid #E4E4E7',
-                    background: '#F4F4F5',
-                    paddingLeft: 40,
-                    paddingRight: 46,
-                    fontSize: 14,
-                    color: '#0A0A0A',
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                    transition: 'border-color 0.15s, background 0.15s',
-                    fontFamily: "'Inter', system-ui, sans-serif",
-                  }}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = '#0A0A0A';
-                    e.target.style.background = '#fff';
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = '#E4E4E7';
-                    e.target.style.background = '#F4F4F5';
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  tabIndex={-1}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: 0,
-                    height: '100%',
-                    paddingRight: 14,
-                    paddingLeft: 10,
-                    display: 'flex',
-                    alignItems: 'center',
-                    color: '#A1A1AA',
-                    background: 'transparent',
-                    border: 'none',
-                    cursor: 'pointer',
-                  }}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
-
-            {/* Error message */}
-            {formError && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  background: '#FEF2F2',
-                  border: '1px solid #FEE2E2',
-                  borderRadius: 10,
-                  padding: '10px 14px',
-                  marginBottom: 16,
-                }}
-              >
-                <span
-                  style={{
-                    width: 7,
-                    height: 7,
-                    borderRadius: '50%',
-                    background: '#EF4444',
-                    flexShrink: 0,
-                  }}
-                />
-                <p style={{ fontSize: 13, fontWeight: 500, color: '#B91C1C' }}>{formError}</p>
-              </div>
+            {isLoading ? (
+              <>
+                <LoadingSpinner size="sm" />
+                <span>Signing in...</span>
+              </>
+            ) : (
+              'Sign in'
             )}
-
-            {/* Submit button */}
-            <button
-              type="submit"
-              id="login-submit-btn"
-              disabled={isLoading}
-              style={{
-                width: '100%',
-                height: 50,
-                borderRadius: 12,
-                background: '#CCFF00',
-                border: 'none',
-                fontSize: 15,
-                fontWeight: 700,
-                color: '#0A0A0A',
-                cursor: isLoading ? 'not-allowed' : 'pointer',
-                opacity: isLoading ? 0.7 : 1,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 8,
-                boxShadow: '0 4px 14px rgba(204, 255, 0, 0.3)',
-                transition: 'background 0.15s, transform 0.1s',
-                fontFamily: "'Inter', system-ui, sans-serif",
-                letterSpacing: '-0.01em',
-              }}
-              onMouseOver={(e) => {
-                if (!isLoading) (e.currentTarget as HTMLButtonElement).style.background = '#B8E600';
-              }}
-              onMouseOut={(e) => {
-                (e.currentTarget as HTMLButtonElement).style.background = '#CCFF00';
-              }}
-            >
-              {isLoading ? (
-                <>
-                  <LoadingSpinner size="sm" />
-                  <span>Signing in...</span>
-                </>
-              ) : (
-                <>
-                  <span>Sign in securely</span>
-                  <ArrowRight size={17} />
-                </>
-              )}
-            </button>
-          </form>
-        </div>
-
-        {/* ── Footer ── */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            marginTop: 20,
-          }}
-        >
-          <ShieldCheck size={14} color="#A1A1AA" />
-          <p style={{ fontSize: 12, color: '#71717A', fontWeight: 500 }}>
-            Enterprise-grade end-to-end encryption
-          </p>
-        </div>
-
+          </button>
+        </form>
       </div>
     </div>
   );

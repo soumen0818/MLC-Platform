@@ -1,5 +1,7 @@
 import { Navigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { getAuthRedirectPath } from '@/lib/authRedirect';
+import { FileCheck, LogOut } from 'lucide-react';
 
 export default function KycPendingPage() {
   const { user, isAuthenticated, logout } = useAuthStore();
@@ -8,25 +10,29 @@ export default function KycPendingPage() {
     return <Navigate to="/login" replace />;
   }
 
-  if (user.requiresPasswordChange) {
-    return <Navigate to="/change-password" replace />;
-  }
-
-  if (user.kycStatus === 'APPROVED') {
-    return <Navigate to="/" replace />;
+  if (user.kycStatus === 'VERIFIED') {
+    return <Navigate to={getAuthRedirectPath(user)} replace />;
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 px-4">
-      <div className="card w-full max-w-lg p-8 text-center">
-        <h1 className="text-2xl font-bold font-display">KYC Verification Required</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-3">
-          Your account is logged in, but KYC is not approved yet. You can access dashboard features after approval.
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+      <div className="w-full max-w-[440px] bg-card rounded-[24px] border border-border shadow-[0_4px_24px_rgba(0,0,0,0.06)] px-9 py-10 text-center">
+        <div className="mx-auto mb-5 flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100">
+          <FileCheck size={28} className="text-blue-500" />
+        </div>
+        <h1 className="text-[20px] font-bold text-text-primary mb-2">
+          KYC Verification Pending
+        </h1>
+        <p className="text-[14px] text-text-secondary leading-relaxed mb-6">
+          Your documents are currently under review. This usually takes 24-48 hours. We will notify you once verified.
         </p>
-        <p className="text-sm mt-4">
-          Current status: <span className="font-semibold">{user.kycStatus}</span>
-        </p>
-        <button className="btn btn-secondary mt-6" onClick={logout}>Sign out</button>
+        <button
+          onClick={logout}
+          className="inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl border border-border bg-white text-text-primary text-[14px] font-semibold cursor-pointer outline-none transition-colors hover:bg-background"
+        >
+          <LogOut size={16} />
+          Sign out
+        </button>
       </div>
     </div>
   );

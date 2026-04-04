@@ -9,7 +9,7 @@ interface AuthState {
   isAuthenticated: boolean;
   isLoading: boolean;
 
-  login: (email: string, password: string) => Promise<{ redirectTo: string }>;
+  login: (email: string, password: string, role?: string) => Promise<{ redirectTo: string }>;
   logout: () => void;
   fetchMe: () => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -23,10 +23,10 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: false,
 
-      login: async (email: string, password: string) => {
+      login: async (email: string, password: string, role?: string) => {
         set({ isLoading: true });
         try {
-          const { data } = await api.post('/auth/login', { email, password });
+          const { data } = await api.post('/auth/login', { email, password, role });
           set({
             user: data.user,
             token: data.token,
@@ -36,7 +36,7 @@ export const useAuthStore = create<AuthState>()(
           return { redirectTo: data.redirectTo };
         } catch (error: any) {
           set({ isLoading: false });
-          throw new Error(error.response?.data?.error || 'Login failed');
+          throw error;
         }
       },
 

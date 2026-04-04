@@ -1,25 +1,20 @@
-import React from 'react';
+﻿import { Construction } from 'lucide-react';
 
 export default function NetworkPage() {
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="flex flex-col gap-6 font-sans">
       <div>
-        <h1 className="text-2xl font-bold font-display text-[var(--color-text-primary)]">
-          Network
-        </h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-          Manage your network here.
-        </p>
+        <h1 className="text-[22px] font-bold text-text-primary tracking-tight m-0">My Retailers</h1>
+        <p className="text-[14px] text-text-secondary mt-1">Manage your network of retailers.</p>
       </div>
-
-      <div className="card p-8 flex items-center justify-center min-h-[400px]">
+      <div className="card p-10 flex items-center justify-center min-h-[400px]">
         <div className="text-center">
-          <div className="w-16 h-16 bg-[var(--color-bg-secondary)] rounded-2xl flex items-center justify-center mx-auto mb-4 border border-[var(--color-border)]">
-             <span className="text-2xl">🚧</span>
+          <div className="w-14 h-14 rounded-2xl bg-background border border-border flex items-center justify-center mx-auto mb-4">
+            <Construction size={24} className="text-text-muted" />
           </div>
-          <h2 className="text-lg font-bold text-[var(--color-text-primary)] mb-2">Module Under Construction</h2>
-          <p className="text-[var(--color-text-secondary)] max-w-md mx-auto text-sm">
-            The Network module is currently being finalized. Check back soon for updates.
+          <h2 className="text-[16px] font-bold text-text-primary mb-2">Module Under Construction</h2>
+          <p className="text-[13px] text-text-secondary max-w-[360px] mx-auto leading-relaxed">
+            The My Retailers module is currently being finalized. Check back soon for updates.
           </p>
         </div>
       </div>

@@ -1,166 +1,136 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
+import { useSidebarStore } from '@/stores/sidebarStore';
 import type { UserRole } from '@/types';
 import { ROLE_LABELS } from '@/types';
 import { getInitials } from '@/lib/utils';
 import {
-  LayoutDashboard,
-  Users,
-  Wallet,
-  Smartphone,
-  PieChart,
-  Settings,
-  FileText,
-  ArrowDownUp,
-  ChevronLeft,
-  ChevronRight,
-  LogOut,
-  Network,
-  Send,
-  ArrowUpRight,
-  History,
-  Award,
-  FileCheck,
-  Boxes
+  LayoutDashboard, Users, Wallet, Smartphone, PieChart, Settings,
+  FileText, ArrowDownUp, LogOut, Network, Send, ArrowUpRight,
+  History, Award, FileCheck, Boxes
 } from 'lucide-react';
-import { useState } from 'react';
 
-interface NavItem {
-  label: string;
-  path: string;
-  icon: React.ReactNode;
-}
+interface NavItem { label: string; path: string; icon: React.ReactNode; }
 
 const NAV_ITEMS: Record<UserRole, NavItem[]> = {
   SUPER_ADMIN: [
-    { label: 'Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={20} /> },
-    { label: 'Users', path: '/admin/users', icon: <Users size={20} /> },
-    { label: 'Commission Config', path: '/admin/commission', icon: <PieChart size={20} /> },
-    { label: 'Wallet Management', path: '/admin/wallet', icon: <Wallet size={20} /> },
-    { label: 'Withdrawals', path: '/admin/withdrawals', icon: <ArrowDownUp size={20} /> },
-    { label: 'Recharges', path: '/admin/recharges', icon: <Smartphone size={20} /> },
-    { label: 'KYC Review', path: '/admin/kyc', icon: <FileCheck size={20} /> },
-    { label: 'Reports', path: '/admin/reports', icon: <FileText size={20} /> },
-    { label: 'Services', path: '/admin/services', icon: <Boxes size={20} /> },
-    { label: 'Settings', path: '/admin/settings', icon: <Settings size={20} /> },
+    { label: 'Dashboard', path: '/admin/dashboard', icon: <LayoutDashboard size={18} /> },
+    { label: 'Users', path: '/admin/users', icon: <Users size={18} /> },
+    { label: 'Commission Config', path: '/admin/commission', icon: <PieChart size={18} /> },
+    { label: 'Wallet Management', path: '/admin/wallet', icon: <Wallet size={18} /> },
+    { label: 'Withdrawals', path: '/admin/withdrawals', icon: <ArrowDownUp size={18} /> },
+    { label: 'Recharges', path: '/admin/recharges', icon: <Smartphone size={18} /> },
+    { label: 'KYC Review', path: '/admin/kyc', icon: <FileCheck size={18} /> },
+    { label: 'Reports', path: '/admin/reports', icon: <FileText size={18} /> },
+    { label: 'Services', path: '/admin/services', icon: <Boxes size={18} /> },
+    { label: 'Settings', path: '/admin/settings', icon: <Settings size={18} /> },
   ],
   STATE_HEAD: [
-    { label: 'Dashboard', path: '/state-head/dashboard', icon: <LayoutDashboard size={20} /> },
-    { label: 'My Network', path: '/state-head/network', icon: <Network size={20} /> },
-    { label: 'Fund Transfer', path: '/state-head/fund-transfer', icon: <Send size={20} /> },
-    { label: 'Topup Request', path: '/state-head/topup-request', icon: <ArrowUpRight size={20} /> },
-    { label: 'Wallet', path: '/state-head/wallet', icon: <Wallet size={20} /> },
-    { label: 'Commission', path: '/state-head/commission', icon: <Award size={20} /> },
-    { label: 'Withdrawals', path: '/state-head/withdraw', icon: <ArrowDownUp size={20} /> },
+    { label: 'Dashboard', path: '/state-head/dashboard', icon: <LayoutDashboard size={18} /> },
+    { label: 'My Network', path: '/state-head/network', icon: <Network size={18} /> },
+    { label: 'Fund Transfer', path: '/state-head/fund-transfer', icon: <Send size={18} /> },
+    { label: 'Topup Request', path: '/state-head/topup-request', icon: <ArrowUpRight size={18} /> },
+    { label: 'Wallet', path: '/state-head/wallet', icon: <Wallet size={18} /> },
+    { label: 'Commission', path: '/state-head/commission', icon: <Award size={18} /> },
+    { label: 'Withdrawals', path: '/state-head/withdraw', icon: <ArrowDownUp size={18} /> },
   ],
   MASTER_DISTRIBUTOR: [
-    { label: 'Dashboard', path: '/master/dashboard', icon: <LayoutDashboard size={20} /> },
-    { label: 'My Network', path: '/master/network', icon: <Network size={20} /> },
-    { label: 'Fund Transfer', path: '/master/fund-transfer', icon: <Send size={20} /> },
-    { label: 'Topup Request', path: '/master/topup-request', icon: <ArrowUpRight size={20} /> },
-    { label: 'Wallet', path: '/master/wallet', icon: <Wallet size={20} /> },
-    { label: 'Commission', path: '/master/commission', icon: <Award size={20} /> },
-    { label: 'Withdrawals', path: '/master/withdraw', icon: <ArrowDownUp size={20} /> },
+    { label: 'Dashboard', path: '/master/dashboard', icon: <LayoutDashboard size={18} /> },
+    { label: 'My Network', path: '/master/network', icon: <Network size={18} /> },
+    { label: 'Fund Transfer', path: '/master/fund-transfer', icon: <Send size={18} /> },
+    { label: 'Topup Request', path: '/master/topup-request', icon: <ArrowUpRight size={18} /> },
+    { label: 'Wallet', path: '/master/wallet', icon: <Wallet size={18} /> },
+    { label: 'Commission', path: '/master/commission', icon: <Award size={18} /> },
+    { label: 'Withdrawals', path: '/master/withdraw', icon: <ArrowDownUp size={18} /> },
   ],
   DISTRIBUTOR: [
-    { label: 'Dashboard', path: '/distributor/dashboard', icon: <LayoutDashboard size={20} /> },
-    { label: 'My Retailers', path: '/distributor/network', icon: <Network size={20} /> },
-    { label: 'Fund Transfer', path: '/distributor/fund-transfer', icon: <Send size={20} /> },
-    { label: 'Topup Request', path: '/distributor/topup-request', icon: <ArrowUpRight size={20} /> },
-    { label: 'Wallet', path: '/distributor/wallet', icon: <Wallet size={20} /> },
-    { label: 'Commission', path: '/distributor/commission', icon: <Award size={20} /> },
-    { label: 'Withdrawals', path: '/distributor/withdraw', icon: <ArrowDownUp size={20} /> },
+    { label: 'Dashboard', path: '/distributor/dashboard', icon: <LayoutDashboard size={18} /> },
+    { label: 'My Retailers', path: '/distributor/network', icon: <Network size={18} /> },
+    { label: 'Fund Transfer', path: '/distributor/fund-transfer', icon: <Send size={18} /> },
+    { label: 'Topup Request', path: '/distributor/topup-request', icon: <ArrowUpRight size={18} /> },
+    { label: 'Wallet', path: '/distributor/wallet', icon: <Wallet size={18} /> },
+    { label: 'Commission', path: '/distributor/commission', icon: <Award size={18} /> },
+    { label: 'Withdrawals', path: '/distributor/withdraw', icon: <ArrowDownUp size={18} /> },
   ],
   RETAILER: [
-    { label: 'Dashboard', path: '/retailer/dashboard', icon: <LayoutDashboard size={20} /> },
-    { label: 'Recharge', path: '/retailer/recharge', icon: <Smartphone size={20} /> },
-    { label: 'History', path: '/retailer/history', icon: <History size={20} /> },
-    { label: 'Wallet', path: '/retailer/wallet', icon: <Wallet size={20} /> },
-    { label: 'Commission', path: '/retailer/commission', icon: <Award size={20} /> },
-    { label: 'Topup Request', path: '/retailer/topup', icon: <ArrowUpRight size={20} /> },
-    { label: 'Withdrawals', path: '/retailer/withdraw', icon: <ArrowDownUp size={20} /> },
+    { label: 'Dashboard', path: '/retailer/dashboard', icon: <LayoutDashboard size={18} /> },
+    { label: 'Recharge', path: '/retailer/recharge', icon: <Smartphone size={18} /> },
+    { label: 'History', path: '/retailer/history', icon: <History size={18} /> },
+    { label: 'Wallet', path: '/retailer/wallet', icon: <Wallet size={18} /> },
+    { label: 'Commission', path: '/retailer/commission', icon: <Award size={18} /> },
+    { label: 'Topup Request', path: '/retailer/topup', icon: <ArrowUpRight size={18} /> },
+    { label: 'Withdrawals', path: '/retailer/withdraw', icon: <ArrowDownUp size={18} /> },
   ],
 };
 
 export default function Sidebar() {
   const { user, logout } = useAuthStore();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { collapsed } = useSidebarStore();
   const navigate = useNavigate();
-
   if (!user) return null;
 
   const navItems = NAV_ITEMS[user.role] || [];
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
+  const handleLogout = () => { logout(); navigate('/login'); };
 
   return (
-    <aside className={`fixed top-0 left-0 h-screen bg-[#0A0A0A] text-zinc-400 z-50 flex flex-col transition-all duration-300 shadow-xl ${isCollapsed ? 'w-20' : 'w-72'}`}>
-      {/* Brand / Logo */}
-      <div className="h-20 px-6 flex items-center border-b border-zinc-800 shrink-0">
-        {!isCollapsed && (
-          <div className="flex flex-col truncate w-full">
-            <h1 className="text-xl font-bold font-display text-white tracking-tight">MLC Platform</h1>
-            <p className="text-[10px] uppercase tracking-wider font-semibold text-[#CCFF00] mt-0.5">{ROLE_LABELS[user.role]}</p>
+    <div className="w-full h-screen bg-sidebar-bg flex flex-col font-sans transition-all duration-300 relative border-r border-sidebar-border">
+      
+      {/* Brand */}
+      <div className={`h-[64px] flex items-center shrink-0 border-b border-sidebar-border transition-all duration-300 ${collapsed ? 'justify-center px-0' : 'justify-between px-5'}`}>
+        {!collapsed ? (
+          <div className="overflow-hidden">
+            <h1 className="text-[16px] font-bold text-white tracking-tight m-0 leading-tight whitespace-nowrap">MLC Platform</h1>
+            <p className="text-[9px] font-bold text-primary tracking-[0.15em] uppercase m-0 whitespace-nowrap">{ROLE_LABELS[user.role]}</p>
+          </div>
+        ) : (
+          <div className="text-primary font-black text-[20px]">
+            M
           </div>
         )}
       </div>
 
-      {/* Navigation Links */}
-      <nav className="flex-1 py-6 px-3 overflow-y-auto hidden-scrollbar space-y-1">
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto overflow-x-hidden p-3 flex flex-col gap-1 hidden-scrollbar">
         {navItems.map((item) => (
           <NavLink
             key={item.path}
             to={item.path}
-            className={({ isActive }) =>
-              `flex items-center gap-3.5 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
-                isActive 
-                  ? 'bg-[#CCFF00] text-black shadow-[0_4px_12px_rgba(204,255,0,0.15)]' 
-                  : 'text-zinc-400 hover:bg-zinc-800 hover:text-white'
-              }`
-            }
-            title={isCollapsed ? item.label : undefined}
+            title={collapsed ? item.label : undefined}
+            className={({ isActive }) => `
+              flex items-center rounded-[10px] text-[13px] font-medium no-underline transition-all duration-200
+              ${collapsed ? 'justify-center py-3' : 'justify-start gap-3 px-3.5 py-2.5'}
+              ${isActive 
+                ? 'bg-primary text-black shadow-[0_2px_8px_rgba(204,255,0,0.15)]' 
+                : 'bg-transparent text-text-muted hover:bg-white/5 hover:text-white'}
+            `}
           >
-            <div className={`${isCollapsed ? 'mx-auto' : ''}`}>{item.icon}</div>
-            {!isCollapsed && <span className="truncate">{item.label}</span>}
+            <div className="shrink-0">{item.icon}</div>
+            {!collapsed && <span className="overflow-hidden text-ellipsis whitespace-nowrap">{item.label}</span>}
           </NavLink>
         ))}
       </nav>
 
-      {/* Collapse Toggle */}
-      <button
-        onClick={() => setIsCollapsed(!isCollapsed)}
-        className="hidden lg:flex items-center justify-center mx-4 p-3 mb-4 rounded-xl text-zinc-500 hover:text-white border border-zinc-800 hover:border-zinc-700 transition-colors"
-      >
-        {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-        {!isCollapsed && <span className="ml-2 text-sm font-medium">Collapse Menu</span>}
-      </button>
-
-      {/* User Profile */}
-      <div className="p-4 border-t border-zinc-800 shrink-0 bg-zinc-900/50 m-2 rounded-2xl">
-        <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
-          <div className="w-10 h-10 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center shrink-0 text-white font-semibold text-sm">
+      {/* User */}
+      <div className="p-2.5 border-t border-sidebar-border shrink-0">
+        <div className={`flex items-center rounded-xl bg-white/5 transition-all duration-300 ${collapsed ? 'flex-col gap-2.5 py-2.5 px-0' : 'flex-row gap-2.5 p-2.5'}`}>
+          <div className="w-9 h-9 rounded-full bg-sidebar-border flex items-center justify-center text-white text-[12px] font-bold shrink-0">
             {getInitials(user.name)}
           </div>
-          {!isCollapsed && (
+          {!collapsed && (
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-white truncate">{user.name}</p>
-              <p className="text-xs text-zinc-500 truncate">{user.email}</p>
+              <p className="text-[13px] font-semibold text-white m-0 overflow-hidden text-ellipsis whitespace-nowrap">{user.name}</p>
+              <p className="text-[11px] text-text-muted m-0 overflow-hidden text-ellipsis whitespace-nowrap">{user.email}</p>
             </div>
           )}
-          {!isCollapsed && (
-            <button
-              onClick={handleLogout}
-              className="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
-              title="Sign Out"
-            >
-              <LogOut size={18} />
-            </button>
-          )}
+          <button
+            onClick={handleLogout}
+            title="Sign Out"
+            className="p-1.5 rounded-lg border-none bg-transparent text-text-muted cursor-pointer shrink-0 transition-all hover:text-red-500 hover:bg-red-500/10"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
-    </aside>
+    </div>
   );
 }

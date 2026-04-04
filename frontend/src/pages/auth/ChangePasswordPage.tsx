@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { LoadingSpinner } from '@/components/ui';
 import { getAuthRedirectPath } from '@/lib/authRedirect';
+import { Lock, KeyRound, ShieldCheck } from 'lucide-react';
 
 export default function ChangePasswordPage() {
   const { user, isAuthenticated, changePassword, isLoading } = useAuthStore();
@@ -16,10 +17,6 @@ export default function ChangePasswordPage() {
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
-  }
-
-  if (!user.requiresPasswordChange) {
-    return <Navigate to={getAuthRedirectPath(user)} replace />;
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -42,61 +39,89 @@ export default function ChangePasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-50 px-4">
-      <div className="card w-full max-w-md p-8">
-        <h1 className="text-2xl font-bold font-display">Change Password</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-1 mb-6">
-          For security reasons, you must set a new password before continuing.
-        </p>
-
-        <form className="space-y-4" onSubmit={handleSubmit}>
+    <div className="min-h-screen flex items-center justify-center px-4 bg-background">
+      <div className="w-full max-w-[440px] bg-card rounded-[24px] border border-border shadow-[0_4px_24px_rgba(0,0,0,0.06)] p-9">
+        {/* Header */}
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-11 h-11 rounded-xl flex items-center justify-center bg-sidebar-bg">
+            <KeyRound size={20} className="text-primary" />
+          </div>
           <div>
-            <label htmlFor="currentPassword" className="input-label">Current Password</label>
-            <input
-              id="currentPassword"
-              type="password"
-              className="input-modern"
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-              required
-            />
+            <h1 className="text-[20px] font-bold text-text-primary tracking-tight m-0">Change Password</h1>
+            <p className="text-[13px] text-text-secondary mt-1 mb-0">Update your account password.</p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div>
+            <label htmlFor="currentPassword" className="block text-[13px] font-semibold text-text-primary mb-2">Current Password</label>
+            <div className="relative">
+              <div className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none">
+                <Lock size={16} className="text-text-muted" />
+              </div>
+              <input
+                id="currentPassword"
+                type="password"
+                value={currentPassword}
+                onChange={(e) => setCurrentPassword(e.target.value)}
+                required
+                className="w-full h-[46px] rounded-xl border border-border bg-background-secondary pl-10 pr-[14px] text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
+              />
+            </div>
           </div>
 
           <div>
-            <label htmlFor="newPassword" className="input-label">New Password</label>
-            <input
-              id="newPassword"
-              type="password"
-              className="input-modern"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              required
-              minLength={8}
-            />
+            <label htmlFor="newPassword" className="block text-[13px] font-semibold text-text-primary mb-2">New Password</label>
+            <div className="relative">
+              <div className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none">
+                <ShieldCheck size={16} className="text-text-muted" />
+              </div>
+              <input
+                id="newPassword"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                required
+                minLength={8}
+                className="w-full h-[46px] rounded-xl border border-border bg-background-secondary pl-10 pr-[14px] text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
+              />
+            </div>
           </div>
 
           <div>
-            <label htmlFor="confirmPassword" className="input-label">Confirm New Password</label>
-            <input
-              id="confirmPassword"
-              type="password"
-              className="input-modern"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              required
-              minLength={8}
-            />
+            <label htmlFor="confirmPassword" className="block text-[13px] font-semibold text-text-primary mb-2">Confirm New Password</label>
+            <div className="relative">
+              <div className="absolute left-[14px] top-1/2 -translate-y-1/2 pointer-events-none">
+                <ShieldCheck size={16} className="text-text-muted" />
+              </div>
+              <input
+                id="confirmPassword"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                minLength={8}
+                className="w-full h-[46px] rounded-xl border border-border bg-background-secondary pl-10 pr-[14px] text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
+              />
+            </div>
           </div>
 
           {errorMessage && (
-            <p className="text-sm text-red-600">{errorMessage}</p>
+            <div className="flex items-center gap-2 bg-red-50 border border-red-100 rounded-xl p-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-red-500 shrink-0" />
+              <p className="text-[13px] font-medium text-red-700 m-0 leading-tight">{errorMessage}</p>
+            </div>
           )}
 
-          <button type="submit" className="btn btn-primary w-full" disabled={isLoading}>
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="w-full h-[50px] mt-2 rounded-xl bg-sidebar-bg text-white text-[15px] font-bold border-none cursor-pointer flex items-center justify-center gap-2 transition-all hover:bg-sidebar-bg/90 disabled:opacity-70 disabled:cursor-not-allowed outline-none focus:ring-[3px] focus:ring-primary/40"
+          >
             {isLoading ? (
               <>
                 <LoadingSpinner size="sm" />
-                Updating...
+                <span>Updating...</span>
               </>
             ) : (
               'Update Password'

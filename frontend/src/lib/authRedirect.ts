@@ -6,9 +6,8 @@ type RedirectUser = Pick<User, 'role' | 'requiresPasswordChange' | 'kycStatus' |
 export function getAuthRedirectPath(user: RedirectUser | null): string {
   if (!user) return '/login';
 
-  if (user.requiresPasswordChange) return '/change-password';
-  if (user.kycStatus !== 'APPROVED') return '/kyc';
+  // Let all roles enter their dashboard, KYC will be handled internally
   if (!user.isActive) return '/account-pending';
 
-  return `${ROLE_PATHS[user.role]}/dashboard`;
+  return `${ROLE_PATHS[user.role as keyof typeof ROLE_PATHS] || ''}/dashboard`;
 }

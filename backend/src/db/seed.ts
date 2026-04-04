@@ -15,14 +15,24 @@ async function seed() {
 
   try {
     const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '12');
-    const passwordHash = await bcrypt.hash('Admin@123!', saltRounds);
+    
+    // Use environment variables for Super Admin credentials
+    const adminEmail = process.env.SUPER_ADMIN_EMAIL || 'admin@mlcplatform.com';
+    const adminPassword = process.env.SUPER_ADMIN_PASSWORD || 'Admin@123!';
+    
+    if (!process.env.SUPER_ADMIN_EMAIL || !process.env.SUPER_ADMIN_PASSWORD) {
+      console.warn('⚠️ SUPER_ADMIN_EMAIL or SUPER_ADMIN_PASSWORD not set in .env.');
+      console.warn('⚠️ Falling back to default demo credentials. DO NOT USE IN PRODUCTION!');
+    }
+
+    const passwordHash = await bcrypt.hash(adminPassword, saltRounds);
 
     const admins = await db.select().from(schema.users).where(eq(schema.users.role, 'SUPER_ADMIN'));
 
     if (admins.length === 0) {
       await db.insert(schema.users).values({
         name: 'System Admin',
-        email: 'admin@mlcplatform.com',
+        email: adminEmail,
         phone: '9999999999',
         passwordHash,
         role: 'SUPER_ADMIN',
@@ -31,8 +41,8 @@ async function seed() {
         requiresPasswordChange: true,
       });
       console.log('✅ Super Admin created.');
-      console.log('  Email: admin@mlcplatform.com');
-      console.log('  Password: Admin@123!');
+      console.log(`  Email: ${adminEmail}`);
+      console.log(`  Password: ${process.env.SUPER_ADMIN_PASSWORD ? '********' : adminPassword}`);
       console.log('  Please change the password on first login.');
     } else {
       console.log('ℹ️ Super Admin already exists.');
