@@ -5,13 +5,37 @@ import { db } from '../db';
 import { kycDocuments, users } from '../db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { z } from 'zod';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 const router = Router();
 router.use(authMiddleware);
 
+// Ensure uploads folder exists gracefully
+const uploadsDir = path.join(process.cwd(), 'uploads', 'kyc');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Set up file storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const authReq = req as AuthRequest;
+    const safeName = authReq.user!.userId + '-' + Date.now() + path.extname(file.originalname);
+    cb(null, safeName);
+  }
+});
+const upload = multer({ 
+  storage, 
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
+});
+
 const uploadSchema = z.object({
   docType: z.enum(['AADHAAR_FRONT', 'AADHAAR_BACK', 'PAN', 'GST', 'SELFIE', 'CANCELLED_CHEQUE']),
-  fileUrl: z.string().url(),
 });
 
 const reviewSchema = z.object({
@@ -20,9 +44,17 @@ const reviewSchema = z.object({
 });
 
 // POST /api/kyc/upload — upload KYC document
-router.post('/upload', async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/upload', upload.single('document'), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const body = uploadSchema.parse(req.body);
+    
+    if (!req.file) {
+       res.status(400).json({ error: 'No document file specifically attached' });
+       return;
+    }
+
+    // Build the accessible URL relative to standard domain host mounting
+    const fileUrl = `/uploads/kyc/${req.file.filename}`;
 
     // Check if document already submitted
     const existing = await db
@@ -46,7 +78,7 @@ router.post('/upload', async (req: AuthRequest, res: Response): Promise<void> =>
       await db
         .update(kycDocuments)
         .set({
-          fileUrl: body.fileUrl,
+          fileUrl,
           status: 'PENDING',
           rejectionReason: null,
         })
@@ -55,7 +87,7 @@ router.post('/upload', async (req: AuthRequest, res: Response): Promise<void> =>
       await db.insert(kycDocuments).values({
         userId: req.user!.userId,
         docType: body.docType,
-        fileUrl: body.fileUrl,
+        fileUrl,
       });
     }
 
@@ -65,7 +97,7 @@ router.post('/upload', async (req: AuthRequest, res: Response): Promise<void> =>
       .set({ kycStatus: 'SUBMITTED', updatedAt: new Date() })
       .where(eq(users.id, req.user!.userId));
 
-    res.json({ message: 'Document uploaded successfully' });
+    res.json({ message: 'Document uploaded successfully', fileUrl });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       res.status(400).json({ error: 'Validation failed', details: error.errors });
@@ -146,7 +178,7 @@ router.patch(
           .where(eq(kycDocuments.userId, doc.userId));
 
         const allApproved = allDocs.every(d => d.id === docId || d.status === 'APPROVED');
-        if (allApproved && allDocs.length >= 2) {
+        if (allApproved && allDocs.length >= 1) {
           await db
             .update(users)
             .set({ kycStatus: 'APPROVED', isActive: true, updatedAt: new Date() })

@@ -4,6 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import path from 'path';
 import { rateLimit } from 'express-rate-limit';
 
 import authRoutes from './routes/auth.routes';
@@ -36,6 +37,11 @@ const globalLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later' },
 });
 app.use(globalLimiter);
+
+app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
+
+// Local Document Storage mount
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Health check
 app.get('/api/health', (_req, res) => {

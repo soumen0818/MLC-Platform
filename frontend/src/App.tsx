@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
@@ -65,8 +66,15 @@ import RetailerWithdrawPage from '@/pages/retailer/WithdrawPage';
 import './index.css';
 
 function App() {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, fetchMe } = useAuthStore();
   const redirectPath = getAuthRedirectPath(user);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      // Forcefully sync the local user state with the absolute truth of the database on every hard refresh
+      fetchMe();
+    }
+  }, [isAuthenticated, fetchMe]);
 
   return (
     <BrowserRouter>

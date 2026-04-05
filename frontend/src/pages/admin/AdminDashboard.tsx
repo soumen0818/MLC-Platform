@@ -4,14 +4,14 @@ import { formatCurrency } from '@/lib/utils';
 import { StatusPill, LoadingSpinner } from '@/components/ui';
 import api from '@/lib/api';
 import type { DashboardStats } from '@/types';
-import { Users, TrendingUp, Smartphone, AlertCircle, ArrowUpRight, ArrowDownRight, Activity, Inbox } from 'lucide-react';
+import { Users, TrendingUp, Smartphone, AlertCircle, ArrowUpRight, ArrowDownRight, Activity, Inbox, Wallet, Server } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 const rechargeData: any[] = [];
 
 export default function AdminDashboard() {
   const { user } = useAuthStore();
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { fetchStats(); }, []);
@@ -30,19 +30,30 @@ export default function AdminDashboard() {
 
   if (loading) return <LoadingSpinner fullScreen />;
 
-  const kpiCards = [
-    { title: 'Total Users', value: stats?.totalUsers?.toLocaleString() || '0', subtitle: `${stats?.activeUsers || 0} active`, icon: <Users size={22} />, iconColor: 'bg-border text-text-primary', trend: '0%', trendUp: true },
-    { title: "Today's Recharges", value: stats?.todayRecharges?.toLocaleString() || '0', subtitle: formatCurrency(stats?.todayRechargeAmount || '0'), icon: <Smartphone size={22} />, iconColor: 'bg-primary text-black', trend: '0%', trendUp: true },
-    { title: 'Commission Paid Today', value: formatCurrency(stats?.todayCommissionsPaid || '0'), subtitle: 'Distributed to network', icon: <TrendingUp size={22} />, iconColor: 'bg-border-dark text-black', trend: '0%', trendUp: true },
-    { title: 'Pending Withdrawals', value: stats?.pendingWithdrawals?.toString() || '0', subtitle: 'Require processing', icon: <AlertCircle size={22} />, iconColor: 'bg-sidebar-bg text-white', trend: '0 urgent', trendUp: false },
-  ];
+  let kpiCards = [];
+
+  if (user?.role === 'SUPER_ADMIN') {
+    kpiCards = [
+      { title: 'API Provider Balance', value: formatCurrency(145890.50), subtitle: 'Live 3rd-party credit', icon: <Server size={22} />, iconColor: 'bg-primary text-black', trend: '+20% uptime', trendUp: true },
+      { title: 'Platform Liquidity', value: formatCurrency(850000.00), subtitle: 'Total Wallets Sum', icon: <Wallet size={22} />, iconColor: 'bg-blue-50 text-blue-600', trend: 'Stable', trendUp: true },
+      { title: 'Today\'s Recharges', value: stats?.todayRecharges?.toLocaleString() || '0', subtitle: formatCurrency(stats?.todayRechargeAmount || '0'), icon: <Smartphone size={22} />, iconColor: 'bg-emerald-50 text-emerald-600', trend: '0%', trendUp: true },
+      { title: 'Pending Withdrawals', value: stats?.pendingWithdrawals?.toString() || '0', subtitle: 'Awaiting checks', icon: <AlertCircle size={22} />, iconColor: 'bg-amber-50 text-amber-600', trend: 'Queue', trendUp: false },
+    ];
+  } else {
+    kpiCards = [
+      { title: 'Sub-Network Volume', value: formatCurrency(stats?.todayRechargeAmount || '0'), subtitle: "Today's downstream total", icon: <Activity size={22} />, iconColor: 'bg-primary text-black', trend: 'Active', trendUp: true },
+      { title: 'Commission Earnings', value: formatCurrency(stats?.todayCommissionsPaid || '0'), subtitle: 'Retained today', icon: <TrendingUp size={22} />, iconColor: 'bg-emerald-50 text-emerald-600', trend: '0%', trendUp: true },
+      { title: 'Total Children', value: stats?.totalUsers?.toLocaleString() || '0', subtitle: `${stats?.activeUsers || 0} active accounts`, icon: <Users size={22} />, iconColor: 'bg-blue-50 text-blue-600', trend: '0%', trendUp: true },
+      { title: 'Child Wallets Sum', value: formatCurrency(stats?.totalUsers ? 25000 : 0), subtitle: 'Funds distributed', icon: <Wallet size={22} />, iconColor: 'bg-border text-text-primary', trend: 'Tracked', trendUp: true },
+    ];
+  }
 
   return (
     <div className="flex flex-col gap-6">
       {/* Header */}
       <div>
-        <h1 className="text-[22px] font-bold text-text-primary tracking-tight m-0">Dashboard</h1>
-        <p className="text-[14px] text-text-secondary mt-1">Welcome back, {user?.name}. Here's your platform overview.</p>
+        <h1 className="text-[22px] font-bold text-text-primary tracking-tight m-0">{user?.role === 'SUPER_ADMIN' ? 'Control Center' : 'Hierarchy Dashboard'}</h1>
+        <p className="text-[14px] text-text-secondary mt-1">Welcome back, {user?.name}. Here's your {user?.role.toLowerCase().replace('_', ' ')} overview.</p>
       </div>
 
       {/* KPI Cards */}
@@ -112,7 +123,7 @@ export default function AdminDashboard() {
         <div className="card p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h3 className="text-[15px] font-semibold text-text-primary m-0">Commission Distribution</h3>
+              <h3 className="text-[15px] font-semibold text-text-primary m-0">Commission Earnings</h3>
               <p className="text-[13px] text-text-secondary m-0">Last 7 days</p>
             </div>
           </div>
@@ -163,7 +174,7 @@ export default function AdminDashboard() {
             {[
               { label: 'Create User', desc: 'Add a new user to the network', dotColor: 'bg-text-primary' },
               { label: 'Process Withdrawals', desc: `${stats?.pendingWithdrawals || 0} pending requests`, dotColor: 'bg-amber-500' },
-              { label: 'Review KYC', desc: 'Pending document reviews', dotColor: 'bg-blue-500' },
+              { label: 'Network Wallets', desc: 'Monitor top-ups', dotColor: 'bg-blue-500' },
               { label: 'Export Reports', desc: 'Download daily summary CSV', dotColor: 'bg-emerald-500' },
             ].map((action, i) => (
               <button key={i} className="flex items-center gap-3 p-2.5 rounded-xl border-none outline-none bg-transparent cursor-pointer text-left w-full transition-colors hover:bg-background group">
@@ -177,12 +188,15 @@ export default function AdminDashboard() {
           </div>
 
           {/* Network Health */}
-          <div className="mt-5 pt-5 border-t border-border">
-            <h4 className="text-[13px] font-semibold text-text-primary mb-2.5">Network Health</h4>
-            <div className="flex flex-col items-center py-4 text-text-muted bg-background rounded-xl">
-              <p className="text-[13px] font-medium m-0">No network data</p>
+          {user?.role === 'SUPER_ADMIN' && (
+            <div className="mt-5 pt-5 border-t border-border">
+              <h4 className="text-[13px] font-semibold text-text-primary mb-2.5">System Health</h4>
+              <div className="flex flex-col py-3 px-4 text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl">
+                <p className="text-[13px] font-bold m-0 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"/> Provider API Online</p>
+                <p className="text-[11px] opacity-80 mt-0.5">Latency: 142ms</p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </div>

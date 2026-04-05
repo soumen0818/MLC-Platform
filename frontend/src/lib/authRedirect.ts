@@ -6,6 +6,9 @@ type RedirectUser = Pick<User, 'role' | 'requiresPasswordChange' | 'kycStatus' |
 export function getAuthRedirectPath(user: RedirectUser | null): string {
   if (!user) return '/login';
 
+  // Force password change sequence centrally before permitting dashboard onboarding
+  if (user.requiresPasswordChange) return '/change-password';
+
   // Let all roles enter their dashboard, KYC will be handled internally
   if (!user.isActive) return '/account-pending';
 

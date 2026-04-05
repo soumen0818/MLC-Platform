@@ -112,16 +112,24 @@ export default function Sidebar() {
 
       {/* User */}
       <div className="p-2.5 border-t border-sidebar-border shrink-0">
-        <div className={`flex items-center rounded-xl bg-white/5 transition-all duration-300 ${collapsed ? 'flex-col gap-2.5 py-2.5 px-0' : 'flex-row gap-2.5 p-2.5'}`}>
-          <div className="w-9 h-9 rounded-full bg-sidebar-border flex items-center justify-center text-white text-[12px] font-bold shrink-0">
-            {getInitials(user.name)}
-          </div>
-          {!collapsed && (
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-semibold text-white m-0 overflow-hidden text-ellipsis whitespace-nowrap">{user.name}</p>
-              <p className="text-[11px] text-text-muted m-0 overflow-hidden text-ellipsis whitespace-nowrap">{user.email}</p>
+        <div className={`flex items-center rounded-xl transition-all duration-300 group ${collapsed ? 'flex-col gap-2.5 py-2.5 px-0 hover:bg-white/5' : 'flex-row gap-2.5 p-2.5 hover:bg-white/10'}`}>
+          
+          <div 
+            className="flex flex-1 items-center gap-2.5 cursor-pointer min-w-0" 
+            onClick={() => navigate('/profile')}
+            title="View Profile"
+          >
+            <div className="w-9 h-9 rounded-full bg-sidebar-border flex items-center justify-center text-white text-[12px] font-bold shrink-0 shadow-sm group-hover:border-primary/50 border border-transparent transition-colors">
+              {getInitials(user.name)}
             </div>
-          )}
+            {!collapsed && (
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-white m-0 overflow-hidden text-ellipsis whitespace-nowrap group-hover:text-primary transition-colors">{user.name || user.email.split('@')[0]}</p>
+                <p className="text-[11px] text-text-muted m-0 overflow-hidden text-ellipsis whitespace-nowrap group-hover:text-text-secondary transition-colors">{user.email}</p>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={handleLogout}
             title="Sign Out"

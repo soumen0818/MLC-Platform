@@ -30,7 +30,7 @@ export class RechargeService {
   }> {
     const { retailerId, mobileNumber, operator, serviceType, amount } = request;
 
-    // 1. Verify retailer exists and is active
+    // 1. Verify retailer exists and is active (stateless check first)
     const [retailer] = await db
       .select()
       .from(users)
@@ -40,36 +40,41 @@ export class RechargeService {
     if (!retailer.isActive) throw new Error('Account is not active');
     if (retailer.role !== 'RETAILER') throw new Error('Only retailers can process recharges');
 
-    // 2. Check wallet balance
-    const balance = parseFloat(retailer.walletBalance);
-    if (balance < amount) {
-      throw new Error('Insufficient wallet balance');
+    // 2. Lock funds and create pending transaction atomically
+    let rechargeTxnId: string = '';
+    try {
+      await db.transaction(async (tx) => {
+        // Atomic wallet debit ensures no double-spending
+        await WalletService.debitWallet(
+          retailerId,
+          amount,
+          'RECHARGE',
+          undefined,
+          `${serviceType} recharge for ${mobileNumber}`,
+          tx
+        );
+
+        // Create pending transaction record
+        const [rechargeTxn] = await tx
+          .insert(rechargeTransactions)
+          .values({
+            retailerId,
+            mobileNumber,
+            operator,
+            serviceType,
+            amount: amount.toFixed(2),
+            status: 'PENDING',
+          })
+          .returning({ id: rechargeTransactions.id });
+
+        rechargeTxnId = rechargeTxn.id;
+      });
+    } catch (error: any) {
+      throw new Error(error.message || 'Failed to initialize recharge transaction');
     }
 
-    // 3. Create recharge transaction record
-    const [rechargeTxn] = await db
-      .insert(rechargeTransactions)
-      .values({
-        retailerId,
-        mobileNumber,
-        operator,
-        serviceType,
-        amount: amount.toFixed(2),
-        status: 'PENDING',
-      })
-      .returning();
-
     try {
-      // 4. Debit retailer's wallet
-      await WalletService.debitWallet(
-        retailerId,
-        amount,
-        'RECHARGE',
-        rechargeTxn.id,
-        `${serviceType} recharge for ${mobileNumber}`
-      );
-
-      // 5. Call third-party recharge API
+      // 3. Call third-party recharge API (outside transaction to avoid blocking DB connection!)
       const apiResponse = await RechargeService.callRechargeApi(
         mobileNumber,
         amount,
@@ -77,59 +82,89 @@ export class RechargeService {
         serviceType
       );
 
-      // 6. Update recharge transaction with API response
-      await db
-        .update(rechargeTransactions)
-        .set({
-          apiProvider: 'primary',
-          apiTxnId: apiResponse.txnId || null,
-          apiResponseRaw: apiResponse.raw || null,
-          status: apiResponse.status,
-          failureReason: apiResponse.reason || null,
-          updatedAt: new Date(),
-        })
-        .where(eq(rechargeTransactions.id, rechargeTxn.id));
-
-      // 7. Handle response
+      // 4. Handle response atomically based on API result
       if (apiResponse.status === 'SUCCESS') {
-        // Distribute commissions up the chain
-        await CommissionService.distributeCommissions(
-          rechargeTxn.id,
-          retailerId,
-          amount,
-          serviceType
-        );
+        await db.transaction(async (tx) => {
+          // Update status
+          await tx
+            .update(rechargeTransactions)
+            .set({
+              apiProvider: 'primary',
+              apiTxnId: apiResponse.txnId || null,
+              apiResponseRaw: apiResponse.raw || null,
+              status: 'SUCCESS',
+              failureReason: apiResponse.reason || null,
+              updatedAt: new Date(),
+            })
+            .where(eq(rechargeTransactions.id, rechargeTxnId));
+
+          // Distribute commissions atomically up the chain
+          await CommissionService.distributeCommissions(
+            rechargeTxnId,
+            retailerId,
+            amount,
+            serviceType,
+            tx
+          );
+        });
 
         return {
-          txnId: rechargeTxn.id,
+          txnId: rechargeTxnId,
           status: 'SUCCESS',
           message: 'Recharge successful',
         };
       } else if (apiResponse.status === 'FAILED') {
-        // Refund the retailer
-        await WalletService.creditWallet(
-          retailerId,
-          amount,
-          'REVERSAL',
-          rechargeTxn.id,
-          `Refund for failed ${serviceType} recharge`
-        );
+        await db.transaction(async (tx) => {
+          // Update status
+          await tx
+            .update(rechargeTransactions)
+            .set({
+              apiProvider: 'primary',
+              apiTxnId: apiResponse.txnId || null,
+              apiResponseRaw: apiResponse.raw || null,
+              status: 'FAILED',
+              failureReason: apiResponse.reason || null,
+              updatedAt: new Date(),
+            })
+            .where(eq(rechargeTransactions.id, rechargeTxnId));
+
+          // Refund the retailer seamlessly within the transaction
+          await WalletService.creditWallet(
+            retailerId,
+            amount,
+            'REVERSAL',
+            rechargeTxnId,
+            `Refund for failed ${serviceType} recharge`,
+            tx
+          );
+        });
 
         return {
-          txnId: rechargeTxn.id,
+          txnId: rechargeTxnId,
           status: 'FAILED',
           message: apiResponse.reason || 'Recharge failed',
         };
       } else {
-        // PENDING — don't refund, wait for webhook
+        // PENDING — keep transaction open, waiting for webhook resolution
+        await db
+          .update(rechargeTransactions)
+          .set({
+            apiProvider: 'primary',
+            apiTxnId: apiResponse.txnId || null,
+            apiResponseRaw: apiResponse.raw || null,
+            status: 'PENDING',
+            updatedAt: new Date(),
+          })
+          .where(eq(rechargeTransactions.id, rechargeTxnId));
+
         return {
-          txnId: rechargeTxn.id,
+          txnId: rechargeTxnId,
           status: 'PENDING',
           message: 'Recharge is being processed',
         };
       }
     } catch (error: any) {
-      // Network error or timeout — mark as PENDING
+      // Network error or timeout — mark as PENDING since money could have left the API provider
       await db
         .update(rechargeTransactions)
         .set({
@@ -137,10 +172,10 @@ export class RechargeService {
           failureReason: error.message,
           updatedAt: new Date(),
         })
-        .where(eq(rechargeTransactions.id, rechargeTxn.id));
+        .where(eq(rechargeTransactions.id, rechargeTxnId!));
 
       return {
-        txnId: rechargeTxn.id,
+        txnId: rechargeTxnId!,
         status: 'PENDING',
         message: 'Recharge submitted, awaiting confirmation',
       };
@@ -149,7 +184,6 @@ export class RechargeService {
 
   /**
    * Abstract third-party recharge API call
-   * In production, replace with actual API integration
    */
   private static async callRechargeApi(
     mobileNumber: string,
@@ -162,15 +196,23 @@ export class RechargeService {
       const apiKey = process.env.RECHARGE_API_KEY;
 
       if (!apiUrl || !apiKey) {
-        // Demo mode — simulate successful recharge
-        return {
-          status: 'SUCCESS',
-          txnId: `DEMO-${Date.now()}`,
-          raw: { demo: true, message: 'Simulated recharge' },
-        };
+        // Demo mode — simulate successful recharge randomly
+        const isSuccess = Math.random() > 0.1; // 90% success rate in demo mode
+        if (isSuccess) {
+          return {
+            status: 'SUCCESS',
+            txnId: `DEMO-${Date.now()}`,
+            raw: { demo: true, message: 'Simulated successful recharge' },
+          };
+        } else {
+          return {
+            status: 'FAILED',
+            reason: 'Simulated failure from Provider',
+            raw: { demo: true },
+          };
+        }
       }
 
-      // Real API call would go here
       const response = await fetch(`${apiUrl}/recharge`, {
         method: 'POST',
         headers: {
@@ -195,13 +237,13 @@ export class RechargeService {
         return { status: 'FAILED', reason: data.message, raw: data };
       }
     } catch (error: any) {
-      // On network error, return PENDING — never assume failure
+      // On network error, assume pending to avoid double crediting
       return { status: 'PENDING', reason: error.message };
     }
   }
 
   /**
-   * Handle webhook callback from recharge API provider
+   * Handle webhook callback from recharge API provider safely in transaction
    */
   static async handleWebhook(
     apiTxnId: string,
@@ -214,39 +256,52 @@ export class RechargeService {
       .where(eq(rechargeTransactions.apiTxnId, apiTxnId));
 
     if (!txn) throw new Error('Transaction not found');
-    if (txn.status !== 'PENDING') return; // Already resolved
+    if (txn.status !== 'PENDING') return; // Idempotency check
 
     const amount = parseFloat(txn.amount);
 
-    await db
-      .update(rechargeTransactions)
-      .set({
-        status,
-        failureReason: reason || null,
-        updatedAt: new Date(),
-      })
-      .where(eq(rechargeTransactions.id, txn.id));
-
     if (status === 'SUCCESS') {
-      // Distribute commissions
-      await CommissionService.distributeCommissions(
-        txn.id,
-        txn.retailerId,
-        amount,
-        txn.serviceType
-      );
-    } else if (status === 'FAILED') {
-      // Refund retailer
-      await WalletService.creditWallet(
-        txn.retailerId,
-        amount,
-        'REVERSAL',
-        txn.id,
-        `Refund for failed recharge (webhook)`
-      );
+      await db.transaction(async (dbTx) => {
+        await dbTx
+          .update(rechargeTransactions)
+          .set({
+            status: 'SUCCESS',
+            failureReason: reason || null,
+            updatedAt: new Date(),
+          })
+          .where(eq(rechargeTransactions.id, txn.id));
 
-      // Reverse any commissions if they were distributed
-      await CommissionService.reverseCommissions(txn.id);
+        await CommissionService.distributeCommissions(
+          txn.id,
+          txn.retailerId,
+          amount,
+          txn.serviceType,
+          dbTx
+        );
+      });
+    } else if (status === 'FAILED') {
+      await db.transaction(async (dbTx) => {
+        await dbTx
+          .update(rechargeTransactions)
+          .set({
+            status: 'FAILED',
+            failureReason: reason || null,
+            updatedAt: new Date(),
+          })
+          .where(eq(rechargeTransactions.id, txn.id));
+
+        // Note: For webhook failures, we must refund the user AND reverse any accidentally processed commissions
+        await WalletService.creditWallet(
+          txn.retailerId,
+          amount,
+          'REVERSAL',
+          txn.id,
+          `Refund for failed recharge (webhook)`,
+          dbTx
+        );
+
+        await CommissionService.reverseCommissions(txn.id, dbTx);
+      });
     }
   }
 }

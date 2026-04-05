@@ -5,6 +5,9 @@ import { WalletService } from './wallet.service';
 
 type UserRole = 'SUPER_ADMIN' | 'STATE_HEAD' | 'MASTER_DISTRIBUTOR' | 'DISTRIBUTOR' | 'RETAILER';
 
+// Helper type for optional transaction
+type DatabaseTx = any;
+
 export class CommissionService {
   /**
    * Distribute commissions up the hierarchy after a successful recharge.
@@ -14,12 +17,13 @@ export class CommissionService {
     rechargeTxnId: string,
     retailerId: string,
     rechargeAmount: number,
-    serviceType: string
+    serviceType: string,
+    tx: DatabaseTx = db
   ): Promise<{ distributedTo: Array<{ userId: string; role: string; amount: number }> }> {
     const distributed: Array<{ userId: string; role: string; amount: number }> = [];
 
     // Get retailer to find parent chain
-    let [currentUser] = await db
+    let [currentUser] = await tx
       .select({
         id: users.id,
         parentId: users.parentId,
@@ -33,7 +37,7 @@ export class CommissionService {
     // Walk up the hierarchy
     while (currentUser.parentId) {
       // Get parent user
-      const [parentUser] = await db
+      const [parentUser] = await tx
         .select({
           id: users.id,
           parentId: users.parentId,
@@ -45,7 +49,7 @@ export class CommissionService {
       if (!parentUser) break;
 
       // Get commission config for this role + service type
-      const [config] = await db
+      const [config] = await tx
         .select()
         .from(commissionConfigs)
         .where(
@@ -64,17 +68,18 @@ export class CommissionService {
             : commValue;
 
         if (creditAmount > 0) {
-          // Credit wallet
+          // Credit wallet atomically
           await WalletService.creditWallet(
             parentUser.id,
             creditAmount,
             'COMMISSION',
             rechargeTxnId,
-            `Commission for ${serviceType} recharge of ₹${rechargeAmount}`
+            `Commission for ${serviceType} recharge of ₹${rechargeAmount}`,
+            tx
           );
 
           // Record commission distribution
-          await db.insert(commissionDistributions).values({
+          await tx.insert(commissionDistributions).values({
             rechargeTxnId,
             userId: parentUser.id,
             role: parentUser.role as UserRole,
@@ -101,9 +106,9 @@ export class CommissionService {
   /**
    * Reverse commissions for a failed/refunded recharge
    */
-  static async reverseCommissions(rechargeTxnId: string): Promise<void> {
+  static async reverseCommissions(rechargeTxnId: string, tx: DatabaseTx = db): Promise<void> {
     // Get all commission distributions for this recharge
-    const distributions = await db
+    const distributions = await tx
       .select()
       .from(commissionDistributions)
       .where(
@@ -122,11 +127,12 @@ export class CommissionService {
         amount,
         'REVERSAL',
         rechargeTxnId,
-        `Commission reversal for failed recharge`
+        `Commission reversal for failed recharge`,
+        tx
       );
 
       // Update distribution status
-      await db
+      await tx
         .update(commissionDistributions)
         .set({ status: 'REVERSED' })
         .where(eq(commissionDistributions.id, dist.id));

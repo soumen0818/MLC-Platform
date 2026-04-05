@@ -4,45 +4,43 @@ import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
 
 type WalletReason = 'RECHARGE' | 'COMMISSION' | 'TOPUP' | 'WITHDRAWAL' | 'REVERSAL' | 'MANUAL_ADJUSTMENT';
 
+// Helper type for optional transaction
+type DatabaseTx = any;
+
 export class WalletService {
   /**
-   * Credit wallet — atomic operation with DB transaction concept
-   * Since Neon HTTP driver doesn't support traditional transactions,
-   * we use optimistic locking via balance checks
+   * Credit wallet — atomic operation
    */
   static async creditWallet(
     userId: string,
     amount: number,
     reason: WalletReason,
     refId?: string,
-    note?: string
+    note?: string,
+    tx: DatabaseTx = db
   ): Promise<{ success: boolean; newBalance: string; txnId: string }> {
     if (amount <= 0) {
       throw new Error('Amount must be positive');
     }
 
-    // Get current balance
-    const [user] = await db
-      .select({ walletBalance: users.walletBalance })
-      .from(users)
-      .where(eq(users.id, userId));
-
-    if (!user) throw new Error('User not found');
-
-    const currentBalance = parseFloat(user.walletBalance);
-    const newBalance = (currentBalance + amount).toFixed(2);
-
-    // Update wallet balance
-    await db
+    // Atomic update wallet balance using raw SQL to prevent race conditions
+    const returnedUsers = await tx
       .update(users)
       .set({
-        walletBalance: newBalance,
+        walletBalance: sql`${users.walletBalance} + ${amount}`,
         updatedAt: new Date(),
       })
-      .where(eq(users.id, userId));
+      .where(eq(users.id, userId))
+      .returning({ walletBalance: users.walletBalance });
+
+    if (!returnedUsers || returnedUsers.length === 0) {
+      throw new Error('User not found');
+    }
+
+    const newBalance = returnedUsers[0].walletBalance;
 
     // Record transaction
-    const [txn] = await db
+    const [txn] = await tx
       .insert(walletTransactions)
       .values({
         userId,
@@ -59,45 +57,38 @@ export class WalletService {
   }
 
   /**
-   * Debit wallet — checks sufficient balance before deducting
+   * Debit wallet — checks sufficient balance before deducting atomically
    */
   static async debitWallet(
     userId: string,
     amount: number,
     reason: WalletReason,
     refId?: string,
-    note?: string
+    note?: string,
+    tx: DatabaseTx = db
   ): Promise<{ success: boolean; newBalance: string; txnId: string }> {
     if (amount <= 0) {
       throw new Error('Amount must be positive');
     }
 
-    // Get current balance
-    const [user] = await db
-      .select({ walletBalance: users.walletBalance })
-      .from(users)
-      .where(eq(users.id, userId));
-
-    if (!user) throw new Error('User not found');
-
-    const currentBalance = parseFloat(user.walletBalance);
-    if (currentBalance < amount) {
-      throw new Error('Insufficient wallet balance');
-    }
-
-    const newBalance = (currentBalance - amount).toFixed(2);
-
-    // Update wallet balance
-    await db
+    // Atomic update wallet balance ensuring balance never drops below amount
+    const returnedUsers = await tx
       .update(users)
       .set({
-        walletBalance: newBalance,
+        walletBalance: sql`${users.walletBalance} - ${amount}`,
         updatedAt: new Date(),
       })
-      .where(eq(users.id, userId));
+      .where(and(eq(users.id, userId), gte(users.walletBalance, amount.toFixed(2))))
+      .returning({ walletBalance: users.walletBalance });
+
+    if (!returnedUsers || returnedUsers.length === 0) {
+      throw new Error('Insufficient wallet balance or user not found');
+    }
+
+    const newBalance = returnedUsers[0].walletBalance;
 
     // Record transaction
-    const [txn] = await db
+    const [txn] = await tx
       .insert(walletTransactions)
       .values({
         userId,
@@ -190,34 +181,39 @@ export class WalletService {
     amount: number,
     utrNumber?: string
   ): Promise<{ success: boolean }> {
-    // Verify parent-child relationship
-    const [child] = await db
-      .select({ parentId: users.parentId })
-      .from(users)
-      .where(eq(users.id, childId));
+    return await db.transaction(async (tx) => {
+      // Verify parent-child relationship
+      const [child] = await tx
+        .select({ parentId: users.parentId })
+        .from(users)
+        .where(eq(users.id, childId));
 
-    if (!child || child.parentId !== parentId) {
-      throw new Error('Invalid transfer: target is not your direct child');
-    }
+      if (!child || child.parentId !== parentId) {
+        throw new Error('Invalid transfer: target is not your direct child');
+      }
 
-    // Debit parent
-    await WalletService.debitWallet(
-      parentId,
-      amount,
-      'TOPUP',
-      utrNumber || undefined,
-      `Fund transfer to child`
-    );
+      // Debit parent
+      await WalletService.debitWallet(
+        parentId,
+        amount,
+        'TOPUP',
+        utrNumber || undefined,
+        `Fund transfer to child`,
+        tx
+      );
 
-    // Credit child
-    await WalletService.creditWallet(
-      childId,
-      amount,
-      'TOPUP',
-      utrNumber || undefined,
-      `Fund received from parent`
-    );
+      // Credit child
+      await WalletService.creditWallet(
+        childId,
+        amount,
+        'TOPUP',
+        utrNumber || undefined,
+        `Fund received from parent`,
+        tx
+      );
 
-    return { success: true };
+      return { success: true };
+    });
   }
 }
+

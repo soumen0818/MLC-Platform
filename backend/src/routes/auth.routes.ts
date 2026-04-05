@@ -155,13 +155,12 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         role: user.role,
         kycStatus: user.kycStatus,
         isActive: user.isActive,
-        requiresPasswordChange: false, // Override to bypass change password page
+        requiresPasswordChange: user.requiresPasswordChange,
         walletBalance: user.walletBalance,
       },
-      // Bypass requires password change redirect if user doesn't want it:
-      redirectTo: !user.isActive 
-        ? '/account-pending' 
-        : rolePaths[user.role] || '/dashboard',
+      redirectTo: user.requiresPasswordChange 
+        ? null 
+        : (!user.isActive ? '/account-pending' : rolePaths[user.role] || '/dashboard'),
     });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
@@ -202,12 +201,13 @@ router.post('/change-password', authMiddleware, async (req: AuthRequest, res: Re
       .set({
         passwordHash: newHash,
         requiresPasswordChange: false,
+        isActive: true, // User accepted account via initialization
         updatedAt: new Date(),
       })
       .where(eq(users.id, req.user!.userId));
 
-    // Generate new token with updated flag
-    const updatedUser = { ...user, requiresPasswordChange: false };
+    // Generate new token with updated flags
+    const updatedUser = { ...user, requiresPasswordChange: false, isActive: true };
     const token = generateToken(updatedUser);
 
     res.json({ message: 'Password changed successfully', token });

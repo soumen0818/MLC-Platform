@@ -7,7 +7,7 @@ import { getAuthRedirectPath } from '@/lib/authRedirect';
 import type { UserRole } from '@/types';
 import { ROLE_LABELS } from '@/types';
 
-import { ShieldCheck, Mail, Lock, ChevronDown } from 'lucide-react';
+import { ShieldCheck, Mail, Lock, ChevronDown, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginPage() {
   const { login, isLoading, isAuthenticated, user } = useAuthStore();
@@ -15,6 +15,7 @@ export default function LoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<UserRole | ''>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -125,14 +126,21 @@ export default function LoginPage() {
               </div>
               <input
                 id="password"
-                type="password"
+                type={showPassword ? "text" : "password"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="current-password"
                 required
-                className="w-full h-12 rounded-xl border border-border bg-background-secondary pl-10 pr-4 text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
+                className="w-full h-12 rounded-xl border border-border bg-background-secondary pl-10 pr-12 text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
                 placeholder="••••••••"
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors p-1"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 

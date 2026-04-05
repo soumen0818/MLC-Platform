@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { useAuthStore } from '@/stores/authStore';
 import { LoadingSpinner } from '@/components/ui';
 import { getAuthRedirectPath } from '@/lib/authRedirect';
-import { Lock, KeyRound, ShieldCheck } from 'lucide-react';
+import { Lock, KeyRound, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 
 export default function ChangePasswordPage() {
   const { user, isAuthenticated, changePassword, isLoading } = useAuthStore();
@@ -14,6 +14,10 @@ export default function ChangePasswordPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   if (!isAuthenticated || !user) {
     return <Navigate to="/login" replace />;
@@ -61,12 +65,19 @@ export default function ChangePasswordPage() {
               </div>
               <input
                 id="currentPassword"
-                type="password"
+                type={showCurrent ? "text" : "password"}
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 required
-                className="w-full h-[46px] rounded-xl border border-border bg-background-secondary pl-10 pr-[14px] text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
+                className="w-full h-[46px] rounded-xl border border-border bg-background-secondary pl-10 pr-12 text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
               />
+              <button
+                type="button"
+                onClick={() => setShowCurrent(!showCurrent)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors p-1"
+              >
+                {showCurrent ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 
@@ -78,13 +89,20 @@ export default function ChangePasswordPage() {
               </div>
               <input
                 id="newPassword"
-                type="password"
+                type={showNew ? "text" : "password"}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
                 minLength={8}
-                className="w-full h-[46px] rounded-xl border border-border bg-background-secondary pl-10 pr-[14px] text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
+                className="w-full h-[46px] rounded-xl border border-border bg-background-secondary pl-10 pr-12 text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
               />
+              <button
+                type="button"
+                onClick={() => setShowNew(!showNew)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors p-1"
+              >
+                {showNew ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 
@@ -96,13 +114,20 @@ export default function ChangePasswordPage() {
               </div>
               <input
                 id="confirmPassword"
-                type="password"
+                type={showConfirm ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
                 minLength={8}
-                className="w-full h-[46px] rounded-xl border border-border bg-background-secondary pl-10 pr-[14px] text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
+                className="w-full h-[46px] rounded-xl border border-border bg-background-secondary pl-10 pr-12 text-[14px] text-text-primary outline-none transition-all focus:border-primary focus:bg-white focus:ring-[3px] focus:ring-primary/20"
               />
+              <button
+                type="button"
+                onClick={() => setShowConfirm(!showConfirm)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary transition-colors p-1"
+              >
+                {showConfirm ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
           </div>
 

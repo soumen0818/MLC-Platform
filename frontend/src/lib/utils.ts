@@ -41,7 +41,8 @@ export function maskAccountNumber(account: string): string {
   return '••••' + account.slice(-4);
 }
 
-export function getInitials(name: string): string {
+export function getInitials(name: string | null | undefined): string {
+  if (!name || typeof name !== 'string') return 'U';
   return name
     .split(' ')
     .map((n) => n[0])

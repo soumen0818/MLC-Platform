@@ -6,7 +6,7 @@ import { eq, and, sql, desc } from 'drizzle-orm';
 import { z } from 'zod';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { roleMiddleware, ROLE_HIERARCHY } from '../middleware/role.middleware';
-import { hierarchyMiddleware } from '../middleware/hierarchy.middleware';
+import { hierarchyMiddleware, creationHierarchyMiddleware } from '../middleware/hierarchy.middleware';
 import { NotificationService } from '../services/notification.service';
 import crypto from 'crypto';
 
@@ -16,9 +16,8 @@ const router = Router();
 router.use(authMiddleware);
 
 const createUserSchema = z.object({
-  name: z.string().min(2),
-  email: z.string().email(),
-  phone: z.string().min(10),
+  email: z.string().email('Invalid email address format'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
   role: z.enum(['STATE_HEAD', 'MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER']),
   parentId: z.string().uuid().optional(),
 });
@@ -88,26 +87,14 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
 });
 
 // POST /api/users — create a new user (parent creates child)
-router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
+router.post('/', creationHierarchyMiddleware, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const body = createUserSchema.parse(req.body);
-    const creatorRole = req.user!.role;
 
-    // Verify the creator can create this role (must be one level above)
-    const allowedChildRole = ROLE_HIERARCHY[creatorRole as keyof typeof ROLE_HIERARCHY];
-    if (creatorRole !== 'SUPER_ADMIN' && body.role !== allowedChildRole) {
-      res.status(403).json({
-        error: `As ${creatorRole}, you can only create ${allowedChildRole} users`,
-      });
-      return;
-    }
+    // Parent ID is always the creator since they can only create direct children
+    const parentId = req.user!.userId;
 
-    // Determine parent
-    const parentId = creatorRole === 'SUPER_ADMIN' && body.parentId
-      ? body.parentId
-      : req.user!.userId;
-
-    // Check duplicate email/phone
+    // Check duplicate email
     const existing = await db
       .select({ id: users.id })
       .from(users)
@@ -119,34 +106,35 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
       return;
     }
 
-    // Generate temporary password
-    const tempPassword = crypto.randomBytes(4).toString('hex') + 'A1!';
+    // Hash the explicit password provided by Admin
     const saltRounds = parseInt(process.env.BCRYPT_SALT_ROUNDS || '12');
-    const passwordHash = await bcrypt.hash(tempPassword, saltRounds);
+    const passwordHash = await bcrypt.hash(body.password, saltRounds);
 
     const [newUser] = await db
       .insert(users)
       .values({
-        name: body.name,
         email: body.email,
-        phone: body.phone,
         passwordHash,
         role: body.role,
         parentId,
-        isActive: false,
+        isActive: false, // Wait for user to accept via password change
         kycStatus: 'PENDING',
         requiresPasswordChange: true,
         createdBy: req.user!.userId,
       })
       .returning();
 
-    // Send welcome email with temp password
-    await NotificationService.sendWelcomeEmail(
-      body.email,
-      body.name,
-      tempPassword,
-      body.role
-    );
+    // Send welcome email (Gracefully handle SMTP errors so they don't break the creation pipeline)
+    try {
+      await NotificationService.sendWelcomeEmail(
+        body.email,
+        'New User',
+        body.password,
+        body.role
+      );
+    } catch (emailErr) {
+      console.warn('Welcome email could not be sent (Usually invalid SMTP config). Continuing creation...', emailErr);
+    }
 
     res.status(201).json({
       message: 'User created successfully',
@@ -156,8 +144,7 @@ router.post('/', async (req: AuthRequest, res: Response): Promise<void> => {
         email: newUser.email,
         role: newUser.role,
         parentId: newUser.parentId,
-      },
-      tempPassword, // Also return in response for immediate use
+      }
     });
   } catch (error: any) {
     if (error instanceof z.ZodError) {
@@ -240,6 +227,33 @@ router.patch('/:userId/activate', async (req: AuthRequest, res: Response): Promi
     res.json({ message: `User ${isActive ? 'activated' : 'deactivated'} successfully` });
   } catch (error) {
     console.error('Activate user error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /api/users/:userId/profile — update basic profile info
+router.patch('/:userId/profile', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { userId } = req.params as { [key: string]: string };
+    const { name, phone } = req.body;
+
+    if (userId !== req.user!.userId && req.user!.role !== 'SUPER_ADMIN') {
+      res.status(403).json({ error: 'Access denied' });
+      return;
+    }
+
+    await db
+      .update(users)
+      .set({ 
+        name: name || null, 
+        phone: phone || null, 
+        updatedAt: new Date() 
+      })
+      .where(eq(users.id, userId));
+
+    res.json({ message: 'Profile updated successfully' });
+  } catch (error) {
+    console.error('Update profile error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

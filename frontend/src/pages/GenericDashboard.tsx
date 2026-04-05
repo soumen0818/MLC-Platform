@@ -21,7 +21,7 @@ export default function GenericDashboard() {
     <div className="flex flex-col gap-6 font-sans">
       <div>
         <h1 className="text-[22px] font-bold text-text-primary tracking-tight m-0">Dashboard</h1>
-        <p className="text-[14px] text-text-secondary mt-1">Welcome, {user.name} — {ROLE_LABELS[user.role]}</p>
+        <p className="text-[14px] text-text-secondary mt-1">Welcome, {user.name || user.email.split('@')[0]} — {ROLE_LABELS[user.role]}</p>
       </div>
 
       {/* Wallet Hero */}
@@ -95,10 +95,10 @@ export default function GenericDashboard() {
           <div key={i} className={`flex items-center justify-between py-3 ${i < children.length - 1 ? 'border-b border-border' : ''}`}>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-background border border-border flex items-center justify-center text-[12px] font-bold text-text-primary">
-                {child.name.split(' ').map((n: string) => n[0]).join('')}
+                {child.name ? child.name.split(' ').map((n: string) => n[0]).join('') : 'U'}
               </div>
               <div>
-                <p className="text-[13px] font-medium text-text-primary m-0">{child.name}</p>
+                <p className="text-[13px] font-medium text-text-primary m-0">{child.name || child.email || 'Unknown User'}</p>
                 <p className="text-[11px] text-text-muted m-0">{child.recharges} recharges this month</p>
               </div>
             </div>

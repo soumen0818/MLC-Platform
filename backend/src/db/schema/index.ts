@@ -97,9 +97,9 @@ export const topupStatusEnum = pgEnum('topup_status', [
 // Users table
 export const users = pgTable('users', {
   id: uuid('id').defaultRandom().primaryKey(),
-  name: varchar('name', { length: 255 }).notNull(),
+  name: varchar('name', { length: 255 }),
   email: varchar('email', { length: 255 }).notNull().unique(),
-  phone: varchar('phone', { length: 20 }).notNull().unique(),
+  phone: varchar('phone', { length: 20 }).unique(),
   passwordHash: varchar('password_hash', { length: 255 }).notNull(),
   role: userRoleEnum('role').notNull(),
   parentId: uuid('parent_id'),
