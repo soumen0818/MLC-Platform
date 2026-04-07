@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, CheckCircle, XCircle, Clock, ExternalLink } from 'lucide-react';
+import { Search, CheckCircle, Clock, ExternalLink } from 'lucide-react';
 import api from '@/lib/api';
 
 interface KycDocument {
@@ -14,7 +14,6 @@ interface KycDocument {
 export default function KycPage() {
   const [documents, setDocuments] = useState<KycDocument[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   
   const [processingAction, setProcessingAction] = useState<{ id: string, type: 'APPROVED' | 'REJECTED' } | null>(null);
@@ -24,8 +23,8 @@ export default function KycPage() {
       setIsLoading(true);
       const { data } = await api.get('/kyc/pending');
       setDocuments(data.documents || []);
-    } catch (err: any) {
-      setError('Failed to load pending KYC documents');
+    } catch {
+      setDocuments([]);
     } finally {
       setIsLoading(false);
     }

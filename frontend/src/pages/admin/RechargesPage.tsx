@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import api from '@/lib/api';
-import { Smartphone, Zap, Tv, Search, Droplet, RefreshCw, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Smartphone, Zap, Tv, CheckCircle2, XCircle, Clock } from 'lucide-react';
 
 interface RechargeTxn {
   id: string;

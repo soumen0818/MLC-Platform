@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
-import { useAuthStore } from '@/stores/authStore';
 import toast from 'react-hot-toast';
 import { UserPlus, Search, UserCheck, ShieldAlert, ArrowRight, X, Eye, EyeOff } from 'lucide-react';
 

@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { formatCurrency } from '@/lib/utils';
-import { StatusPill, LoadingSpinner } from '@/components/ui';
+import { LoadingSpinner } from '@/components/ui';
 import api from '@/lib/api';
-import type { DashboardStats } from '@/types';
 import { Users, TrendingUp, Smartphone, AlertCircle, ArrowUpRight, ArrowDownRight, Activity, Inbox, Wallet, Server } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 

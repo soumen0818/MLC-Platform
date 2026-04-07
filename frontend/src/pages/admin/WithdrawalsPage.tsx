@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import { ShieldAlert } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import api from '@/lib/api';
-import { ArrowUpRight, Clock, CheckCircle, XCircle, Search } from 'lucide-react';
 
 interface Withdrawal {
   id: string;
