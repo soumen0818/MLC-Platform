@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { formatCurrency } from '@/lib/utils';
 import { LoadingSpinner } from '@/components/ui';
 import api from '@/lib/api';
+import { useNavigate } from 'react-router-dom';
 import { Users, TrendingUp, Smartphone, AlertCircle, ArrowUpRight, ArrowDownRight, Activity, Inbox, Wallet, Server } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
@@ -10,6 +11,7 @@ const rechargeData: any[] = [];
 
 export default function AdminDashboard() {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -33,10 +35,42 @@ export default function AdminDashboard() {
 
   if (user?.role === 'SUPER_ADMIN') {
     kpiCards = [
-      { title: 'API Provider Balance', value: formatCurrency(145890.50), subtitle: 'Live 3rd-party credit', icon: <Server size={22} />, iconColor: 'bg-primary text-black', trend: '+20% uptime', trendUp: true },
-      { title: 'Platform Liquidity', value: formatCurrency(850000.00), subtitle: 'Total Wallets Sum', icon: <Wallet size={22} />, iconColor: 'bg-blue-50 text-blue-600', trend: 'Stable', trendUp: true },
-      { title: 'Today\'s Recharges', value: stats?.todayRecharges?.toLocaleString() || '0', subtitle: formatCurrency(stats?.todayRechargeAmount || '0'), icon: <Smartphone size={22} />, iconColor: 'bg-emerald-50 text-emerald-600', trend: '0%', trendUp: true },
-      { title: 'Pending Withdrawals', value: stats?.pendingWithdrawals?.toString() || '0', subtitle: 'Awaiting checks', icon: <AlertCircle size={22} />, iconColor: 'bg-amber-50 text-amber-600', trend: 'Queue', trendUp: false },
+      { 
+        title: 'API Provider Sandbox', 
+        value: 'Simulated', 
+        subtitle: 'Dev mode active', 
+        icon: <Server size={22} />, 
+        iconColor: 'bg-primary text-black', 
+        trend: 'Demo Mode', 
+        trendUp: true 
+      },
+      { 
+        title: 'Platform Liquidity', 
+        value: formatCurrency(stats?.platformLiquidity || 0), 
+        subtitle: 'Total Wallets Sum', 
+        icon: <Wallet size={22} />, 
+        iconColor: 'bg-blue-50 text-blue-600', 
+        trend: 'Live', 
+        trendUp: true 
+      },
+      { 
+        title: "Today's Recharges", 
+        value: stats?.todayRecharges?.toLocaleString() || '0', 
+        subtitle: `${formatCurrency(stats?.todayRechargeAmount || '0')} · Successful only`, 
+        icon: <Smartphone size={22} />, 
+        iconColor: 'bg-emerald-50 text-emerald-600', 
+        trend: '0%', 
+        trendUp: true 
+      },
+      { 
+        title: 'Pending Withdrawals', 
+        value: stats?.pendingWithdrawals?.toString() || '0', 
+        subtitle: 'Awaiting checks', 
+        icon: <AlertCircle size={22} />, 
+        iconColor: 'bg-amber-50 text-amber-600', 
+        trend: 'Queue', 
+        trendUp: false 
+      },
     ];
   } else {
     kpiCards = [
@@ -171,12 +205,12 @@ export default function AdminDashboard() {
           <h3 className="text-[15px] font-semibold text-text-primary mb-3.5">Quick Actions</h3>
           <div className="flex flex-col gap-1.5">
             {[
-              { label: 'Create User', desc: 'Add a new user to the network', dotColor: 'bg-text-primary' },
-              { label: 'Process Withdrawals', desc: `${stats?.pendingWithdrawals || 0} pending requests`, dotColor: 'bg-amber-500' },
-              { label: 'Network Wallets', desc: 'Monitor top-ups', dotColor: 'bg-blue-500' },
-              { label: 'Export Reports', desc: 'Download daily summary CSV', dotColor: 'bg-emerald-500' },
+              { label: 'Create User', desc: 'Add a new user to the network', dotColor: 'bg-text-primary', path: '/admin/users' },
+              { label: 'Process Withdrawals', desc: `${stats?.pendingWithdrawals || 0} pending requests`, dotColor: 'bg-amber-500', path: '/admin/withdrawals' },
+              { label: 'Network Wallets', desc: 'Monitor top-ups', dotColor: 'bg-blue-500', path: '/admin/wallet' },
+              { label: 'Export Reports', desc: 'Download daily summary CSV', dotColor: 'bg-emerald-500', path: '/admin/reports' },
             ].map((action, i) => (
-              <button key={i} className="flex items-center gap-3 p-2.5 rounded-xl border-none outline-none bg-transparent cursor-pointer text-left w-full transition-colors hover:bg-background group">
+              <button key={i} onClick={() => navigate(action.path)} className="flex items-center gap-3 p-2.5 rounded-xl border-none outline-none bg-transparent cursor-pointer text-left w-full transition-colors hover:bg-background group">
                 <div className={`w-2 h-2 rounded-full ${action.dotColor} shrink-0 transition-transform group-hover:scale-125`} />
                 <div>
                   <p className="text-[13px] font-semibold text-text-primary m-0">{action.label}</p>

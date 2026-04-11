@@ -38,7 +38,12 @@ export default function ChangePasswordPage() {
       const nextPath = getAuthRedirectPath(useAuthStore.getState().user);
       navigate(nextPath, { replace: true });
     } catch (error: any) {
-      setErrorMessage(error?.response?.data?.error || error?.message || 'Unable to change password.');
+      const respData = error?.response?.data;
+      if (respData?.details && respData.details.length > 0) {
+        setErrorMessage(respData.details[0].message);
+      } else {
+        setErrorMessage(respData?.error || error?.message || 'Unable to change password.');
+      }
     }
   };
 

@@ -183,7 +183,7 @@ export class RechargeService {
   }
 
   /**
-   * Abstract third-party recharge API call
+   * Abstract third-party recharge API call — supports Setu BBPS API
    */
   private static async callRechargeApi(
     mobileNumber: string,
@@ -192,12 +192,13 @@ export class RechargeService {
     serviceType: string
   ): Promise<ApiResponse> {
     try {
-      const apiUrl = process.env.RECHARGE_API_URL;
-      const apiKey = process.env.RECHARGE_API_KEY;
+      const apiUrl = process.env.RECHARGE_API_URL;      // e.g. https://dg-sandbox.setu.co
+      const clientId = process.env.RECHARGE_API_KEY;    // Setu clientId
+      const clientSecret = process.env.RECHARGE_CLIENT_SECRET;
 
-      if (!apiUrl || !apiKey) {
-        // Demo mode — simulate successful recharge randomly
-        const isSuccess = Math.random() > 0.1; // 90% success rate in demo mode
+      if (!apiUrl || !clientId || !clientSecret) {
+        // Demo mode — simulate recharge (90% success rate)
+        const isSuccess = Math.random() > 0.1;
         if (isSuccess) {
           return {
             status: 'SUCCESS',
@@ -213,31 +214,71 @@ export class RechargeService {
         }
       }
 
-      const response = await fetch(`${apiUrl}/recharge`, {
+      // Step 1: Exchange credentials for a short-lived JWT from Setu
+      const tokenRes = await fetch(`${apiUrl}/api/v2/auth/token`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          mobile: mobileNumber,
-          amount,
-          operator,
-          type: serviceType,
+          clientID: clientId,
+          secret: clientSecret,
         }),
       });
 
-      const data = await response.json();
+      if (!tokenRes.ok) {
+        return { status: 'FAILED', reason: `Setu auth failed: ${tokenRes.status}` };
+      }
 
-      if (data.status === 'success' || data.status === 1) {
-        return { status: 'SUCCESS', txnId: data.txn_id, raw: data };
-      } else if (data.status === 'pending' || data.status === 2) {
-        return { status: 'PENDING', txnId: data.txn_id, raw: data };
+      const tokenData: any = await tokenRes.json();
+      const bearerToken: string = tokenData?.data?.token;
+
+      if (!bearerToken) {
+        return { status: 'FAILED', reason: 'Setu auth token missing in response' };
+      }
+
+      // Step 2: Submit the recharge request to Setu BBPS
+      const response = await fetch(`${apiUrl}/api/v2/biller-payments/bbps/recharge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${bearerToken}`,
+          'X-Setu-Product-Instance-ID': clientId,
+        },
+        body: JSON.stringify({
+          billerId: operator,       // Setu uses billerID to identify operator
+          customerMobileNumber: mobileNumber,
+          amount: {
+            value: Math.round(amount * 100), // Setu uses paise (smallest unit)
+            currencyCode: 'INR',
+          },
+          amountType: 'EXACT',
+          additionalInfo: { serviceType },
+        }),
+      });
+
+      const data: any = await response.json();
+
+      // Setu BBPS response mapping
+      if (data?.status === 'SUCCESS' || data?.payment?.status === 'SUCCESS') {
+        return {
+          status: 'SUCCESS',
+          txnId: data?.payment?.id || data?.referenceId || `SETU-${Date.now()}`,
+          raw: data,
+        };
+      } else if (data?.status === 'PENDING' || data?.payment?.status === 'PENDING') {
+        return {
+          status: 'PENDING',
+          txnId: data?.payment?.id || data?.referenceId,
+          raw: data,
+        };
       } else {
-        return { status: 'FAILED', reason: data.message, raw: data };
+        return {
+          status: 'FAILED',
+          reason: data?.error?.message || data?.message || 'Recharge failed',
+          raw: data,
+        };
       }
     } catch (error: any) {
-      // On network error, assume pending to avoid double crediting
+      // On network error, assume PENDING (safe — don't refund prematurely)
       return { status: 'PENDING', reason: error.message };
     }
   }

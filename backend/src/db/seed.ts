@@ -1,14 +1,17 @@
 import { config } from 'dotenv';
 config();
 
-import { neon } from '@neondatabase/serverless';
-import { drizzle } from 'drizzle-orm/neon-http';
+import { Pool, neonConfig } from '@neondatabase/serverless';
+import { drizzle } from 'drizzle-orm/neon-serverless';
+import ws from 'ws';
 import { eq } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import * as schema from './schema';
 
-const sql = neon(process.env.DATABASE_URL!);
-const db = drizzle(sql, { schema });
+neonConfig.webSocketConstructor = ws;
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL! });
+const db = drizzle(pool, { schema });
 
 async function seed() {
   console.log('🌱 Seeding database...');

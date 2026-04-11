@@ -33,11 +33,21 @@ const topupProcessSchema = z.object({
   action: z.enum(['APPROVED', 'REJECTED']),
 });
 
-// GET /api/wallet/balance — get my wallet balance
+// GET /api/wallet/balance — get my main wallet balance
 router.get('/balance', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const balance = await WalletService.getBalance(req.user!.userId);
     res.json({ balance });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/wallet/balance/full — get both main + commission wallet balances
+router.get('/balance/full', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const balances = await WalletService.getFullBalance(req.user!.userId);
+    res.json(balances);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

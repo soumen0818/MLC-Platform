@@ -22,7 +22,7 @@ export class CommissionService {
   ): Promise<{ distributedTo: Array<{ userId: string; role: string; amount: number }> }> {
     const distributed: Array<{ userId: string; role: string; amount: number }> = [];
 
-    // Get retailer to find parent chain
+    // Get retailer to start the chain
     let [currentUser] = await tx
       .select({
         id: users.id,
@@ -34,19 +34,10 @@ export class CommissionService {
 
     if (!currentUser) throw new Error('Retailer not found');
 
-    // Walk up the hierarchy
-    while (currentUser.parentId) {
-      // Get parent user
-      const [parentUser] = await tx
-        .select({
-          id: users.id,
-          parentId: users.parentId,
-          role: users.role,
-        })
-        .from(users)
-        .where(eq(users.id, currentUser.parentId));
+    let processingUser: any = currentUser;
 
-      if (!parentUser) break;
+    // Walk up the hierarchy, including the requesting retailer
+    while (processingUser) {
 
       // Get commission config for this role + service type
       const [config] = await tx
@@ -55,7 +46,7 @@ export class CommissionService {
         .where(
           and(
             eq(commissionConfigs.serviceType, serviceType),
-            eq(commissionConfigs.role, parentUser.role as UserRole),
+            eq(commissionConfigs.role, processingUser.role as UserRole),
             eq(commissionConfigs.isActive, true)
           )
         );
@@ -68,21 +59,22 @@ export class CommissionService {
             : commValue;
 
         if (creditAmount > 0) {
-          // Credit wallet atomically
+          // Credit COMMISSION sub-wallet (locked for recharges only)
           await WalletService.creditWallet(
-            parentUser.id,
+            processingUser.id,
             creditAmount,
             'COMMISSION',
             rechargeTxnId,
             `Commission for ${serviceType} recharge of ₹${rechargeAmount}`,
-            tx
+            tx,
+            'COMMISSION'  // ← Routes to commissionWalletBalance
           );
 
           // Record commission distribution
           await tx.insert(commissionDistributions).values({
             rechargeTxnId,
-            userId: parentUser.id,
-            role: parentUser.role as UserRole,
+            userId: processingUser.id,
+            role: processingUser.role as UserRole,
             commissionType: config.commissionType as 'PERCENTAGE' | 'FLAT',
             commissionValue: config.commissionValue,
             amountCredited: creditAmount.toFixed(2),
@@ -90,14 +82,27 @@ export class CommissionService {
           });
 
           distributed.push({
-            userId: parentUser.id,
-            role: parentUser.role,
+            userId: processingUser.id,
+            role: processingUser.role,
             amount: creditAmount,
           });
         }
       }
 
-      currentUser = parentUser;
+      // Move to parent for next iteration
+      if (processingUser.parentId) {
+        const [parentUser] = await tx
+          .select({
+            id: users.id,
+            parentId: users.parentId,
+            role: users.role,
+          })
+          .from(users)
+          .where(eq(users.id, processingUser.parentId));
+        processingUser = parentUser;
+      } else {
+        processingUser = null;
+      }
     }
 
     return { distributedTo: distributed };

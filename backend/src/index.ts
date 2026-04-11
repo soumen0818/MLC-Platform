@@ -4,7 +4,6 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import path from 'path';
 import { rateLimit } from 'express-rate-limit';
 
 import authRoutes from './routes/auth.routes';
@@ -16,6 +15,7 @@ import withdrawalRoutes from './routes/withdrawal.routes';
 import reportRoutes from './routes/report.routes';
 import kycRoutes from './routes/kyc.routes';
 import serviceRoutes from './routes/service.routes';
+import { RechargePollerService } from './services/recharge-poller.service';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -58,9 +58,6 @@ app.use(globalLimiter);
 
 app.use(helmet.crossOriginResourcePolicy({ policy: "cross-origin" }));
 
-// Local Document Storage mount
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
-
 // Health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -95,6 +92,9 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 app.listen(PORT, () => {
   console.log(`🚀 MLC Backend running on http://localhost:${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
+  
+  // Start background recharge status poller
+  RechargePollerService.start();
 });
 
 export default app;

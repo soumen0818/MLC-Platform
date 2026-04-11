@@ -3,12 +3,14 @@ import { formatCurrency } from '@/lib/utils';
 import { StatusPill } from '@/components/ui';
 import { Wallet, TrendingUp, Smartphone, ArrowUpRight, Zap, CreditCard, Inbox } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 
 const weekData: any[] = [];
 const transactions: any[] = [];
 
 export default function RetailerDashboard() {
   const { user } = useAuthStore();
+  const navigate = useNavigate();
   const stats = {
     walletBalance: user?.walletBalance || '0.00',
     todayRecharges: 0,
@@ -34,10 +36,10 @@ export default function RetailerDashboard() {
             {formatCurrency(stats.walletBalance)}
           </p>
           <div className="flex gap-2.5">
-            <button className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-none bg-white text-black text-[13px] font-semibold cursor-pointer shadow-sm hover:bg-gray-50 transition-colors">
+            <button onClick={() => navigate('/retailer/topup')} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-none bg-white text-black text-[13px] font-semibold cursor-pointer shadow-sm hover:bg-gray-50 transition-colors">
               <ArrowUpRight size={15} /> Request Top-up
             </button>
-            <button className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-white/20 bg-white/15 text-white text-[13px] font-semibold cursor-pointer hover:bg-white/25 transition-colors">
+            <button onClick={() => navigate('/retailer/withdraw')} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border border-white/20 bg-white/15 text-white text-[13px] font-semibold cursor-pointer hover:bg-white/25 transition-colors">
               <CreditCard size={15} /> Withdraw
             </button>
           </div>
@@ -76,7 +78,7 @@ export default function RetailerDashboard() {
             </div>
             <span className="text-[13px] text-text-secondary">Quick Recharge</span>
           </div>
-          <button className="flex items-center justify-center gap-1.5 w-full p-2.5 rounded-xl border-none bg-black text-white text-[13px] font-semibold cursor-pointer mt-1.5 hover:bg-black/90 transition-colors">
+          <button onClick={() => navigate('/retailer/recharge')} className="flex items-center justify-center gap-1.5 w-full p-2.5 rounded-xl border-none bg-black text-white text-[13px] font-semibold cursor-pointer mt-1.5 hover:bg-black/90 transition-colors">
             <Smartphone size={14} /> New Recharge
           </button>
         </div>
@@ -113,7 +115,7 @@ export default function RetailerDashboard() {
       <div className="card p-6">
         <div className="flex items-center justify-between mb-3.5">
           <h3 className="text-[15px] font-semibold text-text-primary m-0">Recent Transactions</h3>
-          <button className="text-[12px] font-semibold text-text-secondary bg-transparent border-none cursor-pointer hover:text-text-primary">View All</button>
+          <button onClick={() => navigate('/retailer/history')} className="text-[12px] font-semibold text-text-secondary bg-transparent border-none cursor-pointer hover:text-text-primary">View All</button>
         </div>
         
         {transactions.length > 0 ? transactions.map((txn, i) => (

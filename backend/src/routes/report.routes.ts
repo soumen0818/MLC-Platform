@@ -83,7 +83,12 @@ router.get('/dashboard-stats', async (req: AuthRequest, res: Response): Promise<
           totalAmount: sql<string>`COALESCE(SUM(amount), 0)`,
         })
         .from(rechargeTransactions)
-        .where(gte(rechargeTransactions.createdAt, today));
+        .where(
+          and(
+            gte(rechargeTransactions.createdAt, today),
+            eq(rechargeTransactions.status, 'SUCCESS')
+          )
+        );
 
       const [todayCommissions] = await db
         .select({
@@ -102,6 +107,13 @@ router.get('/dashboard-stats', async (req: AuthRequest, res: Response): Promise<
         .from(withdrawalRequests)
         .where(eq(withdrawalRequests.status, 'PENDING'));
 
+      const [walletPool] = await db
+        .select({
+          totalLiquidity: sql<string>`COALESCE(SUM(CAST(wallet_balance AS NUMERIC)), 0)`
+        })
+        .from(users)
+        .where(sql`role != 'SUPER_ADMIN'`);
+
       res.json({
         totalUsers: userStats.totalUsers,
         activeUsers: userStats.activeUsers,
@@ -109,6 +121,7 @@ router.get('/dashboard-stats', async (req: AuthRequest, res: Response): Promise<
         todayRechargeAmount: todayRecharges.totalAmount,
         todayCommissionsPaid: todayCommissions.totalPaid,
         pendingWithdrawals: pendingWithdrawals.count,
+        platformLiquidity: walletPool.totalLiquidity,
       });
     } else if (role === 'RETAILER') {
       // Retailer stats
@@ -126,7 +139,8 @@ router.get('/dashboard-stats', async (req: AuthRequest, res: Response): Promise<
         .where(
           and(
             eq(rechargeTransactions.retailerId, userId),
-            gte(rechargeTransactions.createdAt, today)
+            gte(rechargeTransactions.createdAt, today),
+            eq(rechargeTransactions.status, 'SUCCESS')
           )
         );
 

@@ -8,7 +8,26 @@ import {
   timestamp,
   pgEnum,
   jsonb,
+  customType,
 } from 'drizzle-orm/pg-core';
+
+// Custom bytea type for binary file storage
+const bytea = customType<{ data: Buffer; notNull: true; default: false }>({
+  dataType() {
+    return 'bytea';
+  },
+  toDriver(val: Buffer) {
+    return val;
+  },
+  fromDriver(val: unknown) {
+    if (Buffer.isBuffer(val)) return val;
+    // Neon returns bytea as a hex-encoded \x... string over HTTP
+    if (typeof val === 'string' && val.startsWith('\\x')) {
+      return Buffer.from(val.slice(2), 'hex');
+    }
+    return Buffer.from(val as any);
+  },
+});
 import { relations } from 'drizzle-orm';
 
 // ===================== ENUMS =====================
@@ -37,6 +56,12 @@ export const walletReasonEnum = pgEnum('wallet_reason', [
   'WITHDRAWAL',
   'REVERSAL',
   'MANUAL_ADJUSTMENT',
+]);
+
+// Identifies which sub-wallet a transaction belongs to
+export const walletTypeEnum = pgEnum('wallet_type', [
+  'MAIN',        // Bank top-up funds — used for recharges, transferable, withdrawable
+  'COMMISSION',  // Commission earnings — locked to recharges only, not directly withdrawable
 ]);
 
 export const serviceTypeEnum = pgEnum('service_type', [
@@ -104,6 +129,7 @@ export const users = pgTable('users', {
   role: userRoleEnum('role').notNull(),
   parentId: uuid('parent_id'),
   walletBalance: decimal('wallet_balance', { precision: 12, scale: 2 }).notNull().default('0.00'),
+  commissionWalletBalance: decimal('commission_wallet_balance', { precision: 12, scale: 2 }).notNull().default('0.00'),
   kycStatus: kycStatusEnum('kyc_status').notNull().default('PENDING'),
   isActive: boolean('is_active').notNull().default(false),
   requiresPasswordChange: boolean('requires_password_change').notNull().default(true),
@@ -117,6 +143,7 @@ export const walletTransactions = pgTable('wallet_transactions', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id),
   type: txnTypeEnum('type').notNull(),
+  walletType: walletTypeEnum('wallet_type').notNull().default('MAIN'),  // Which sub-wallet this txn hits
   amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
   closingBalance: decimal('closing_balance', { precision: 12, scale: 2 }).notNull(),
   reason: walletReasonEnum('reason').notNull(),
@@ -186,12 +213,14 @@ export const withdrawalRequests = pgTable('withdrawal_requests', {
   rejectionReason: text('rejection_reason'),
 });
 
-// KYC Documents table
+// KYC Documents table — files stored as binary in Neon DB
 export const kycDocuments = pgTable('kyc_documents', {
   id: uuid('id').defaultRandom().primaryKey(),
   userId: uuid('user_id').notNull().references(() => users.id),
   docType: docTypeEnum('doc_type').notNull(),
-  fileUrl: varchar('file_url', { length: 500 }).notNull(),
+  fileData: bytea('file_data').notNull(),
+  mimeType: varchar('mime_type', { length: 100 }).notNull(),
+  originalName: varchar('original_name', { length: 255 }).notNull(),
   status: docStatusEnum('status').notNull().default('PENDING'),
   reviewedBy: uuid('reviewed_by').references(() => users.id),
   reviewedAt: timestamp('reviewed_at'),

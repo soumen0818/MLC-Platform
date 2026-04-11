@@ -30,7 +30,7 @@ export default function RechargesPage() {
     setIsLoading(true);
     try {
       // If admin, we fetch all. If retailer, we fetch their own.
-      const endpoint = user?.role === 'SUPER_ADMIN' ? '/recharge/all' : '/recharge/my';
+      const endpoint = user?.role === 'SUPER_ADMIN' ? '/recharge/all' : '/recharge/history';
       // MOCK: Assuming /recharge/all or /my exists. Let's use /wallet/transactions or a mock if it fails.
       // Wait, we have backend for recharge tracking.
       // But we haven't checked if `/recharge/my` exists. If not, catching error seamlessly.

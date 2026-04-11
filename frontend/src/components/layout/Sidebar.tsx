@@ -33,6 +33,7 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     { label: 'Wallet', path: '/state-head/wallet', icon: <Wallet size={18} /> },
     { label: 'Commission', path: '/state-head/commission', icon: <Award size={18} /> },
     { label: 'Withdrawals', path: '/state-head/withdraw', icon: <ArrowDownUp size={18} /> },
+    { label: 'KYC Review', path: '/state-head/kyc', icon: <FileCheck size={18} /> },
   ],
   MASTER_DISTRIBUTOR: [
     { label: 'Dashboard', path: '/master/dashboard', icon: <LayoutDashboard size={18} /> },
@@ -42,6 +43,7 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     { label: 'Wallet', path: '/master/wallet', icon: <Wallet size={18} /> },
     { label: 'Commission', path: '/master/commission', icon: <Award size={18} /> },
     { label: 'Withdrawals', path: '/master/withdraw', icon: <ArrowDownUp size={18} /> },
+    { label: 'KYC Review', path: '/master/kyc', icon: <FileCheck size={18} /> },
   ],
   DISTRIBUTOR: [
     { label: 'Dashboard', path: '/distributor/dashboard', icon: <LayoutDashboard size={18} /> },
@@ -51,6 +53,7 @@ const NAV_ITEMS: Record<UserRole, NavItem[]> = {
     { label: 'Wallet', path: '/distributor/wallet', icon: <Wallet size={18} /> },
     { label: 'Commission', path: '/distributor/commission', icon: <Award size={18} /> },
     { label: 'Withdrawals', path: '/distributor/withdraw', icon: <ArrowDownUp size={18} /> },
+    { label: 'KYC Review', path: '/distributor/kyc', icon: <FileCheck size={18} /> },
   ],
   RETAILER: [
     { label: 'Dashboard', path: '/retailer/dashboard', icon: <LayoutDashboard size={18} /> },

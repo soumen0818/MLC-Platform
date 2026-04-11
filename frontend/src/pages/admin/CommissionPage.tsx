@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
+import toast from 'react-hot-toast';
 import { Save, Percent, DollarSign } from 'lucide-react';
 
 interface Config {
@@ -7,7 +8,7 @@ interface Config {
   role: string;
   serviceType: string;
   commissionType: 'PERCENTAGE' | 'FLAT';
-  commissionValue: string;
+  commissionValue: string | number;
 }
 
 export default function CommissionPage() {
@@ -17,10 +18,24 @@ export default function CommissionPage() {
   const fetchConfigs = async () => {
     try {
       const { data } = await api.get('/commission/configs');
-      // Ensure we extract from data.configs if wrapped in an object payload
       const mappedData = data?.configs || data || [];
       if (Array.isArray(mappedData) && mappedData.length > 0) {
-        setConfigs(mappedData);
+        // Deduplicate by role and serviceType
+        const uniqueConfigs: Config[] = [];
+        const seen = new Set();
+        for (const cfg of mappedData) {
+          const key = `${cfg.serviceType}-${cfg.role}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            uniqueConfigs.push(cfg);
+          }
+        }
+        
+        // Let's sort them in hierarchy order
+        const hierarchyOrder = ['STATE_HEAD', 'MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER'];
+        uniqueConfigs.sort((a, b) => hierarchyOrder.indexOf(a.role) - hierarchyOrder.indexOf(b.role));
+        
+        setConfigs(uniqueConfigs);
       } else {
         throw new Error("Empty or invalid config payload");
       }
@@ -37,12 +52,28 @@ export default function CommissionPage() {
 
   useEffect(() => { fetchConfigs(); }, []);
 
-  const handleUpdate = async (id: string, value: string) => {
+  const handleUpdate = (id: string, value: string) => {
+    setConfigs(prev => prev.map(c => c.id === id ? { ...c, commissionValue: value } : c));
+  };
+
+  const handleDeploy = async () => {
     try {
-      // await api.put(`/commission/configs/${id}`, { commissionValue: parseFloat(value) });
-      setConfigs(prev => prev.map(c => c.id === id ? { ...c, commissionValue: value } : c));
+      setLoading(true);
+      await Promise.all(
+        configs.map(cfg => 
+          api.post('/commission/configs', {
+            serviceType: cfg.serviceType,
+            role: cfg.role,
+            commissionType: cfg.commissionType,
+            commissionValue: parseFloat(cfg.commissionValue.toString()) || 0
+          })
+        )
+      );
+      toast.success('Commission configurations securely deployed to network!');
+      fetchConfigs();
     } catch (err: any) {
-      alert('Failed to update commission');
+      toast.error(err.response?.data?.error || 'Failed to deploy configurations');
+      setLoading(false);
     }
   };
 
@@ -56,22 +87,23 @@ export default function CommissionPage() {
       <div className="card border border-border p-6">
         <h2 className="text-[16px] font-bold text-text-primary mb-6">Mobile Recharges</h2>
         {loading ? (
-          <p className="text-[13px] text-text-muted">Loading tables...</p>
+          <p className="text-[13px] text-text-muted">Loading configuration tables...</p>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {configs.map(cfg => (
-               <div key={cfg.id} className="border border-border p-4 rounded-xl flex flex-col bg-background/30">
+            {configs.filter(c => c.serviceType === 'MOBILE').map(cfg => (
+               <div key={cfg.id} className="border border-border p-4 rounded-xl flex flex-col bg-background/30 shadow-sm hover:shadow-md transition-shadow">
                   <h3 className="text-[13px] font-bold text-text-secondary mb-3 uppercase tracking-wider">{cfg.role ? cfg.role.replace('_', ' ') : 'UNKNOWN TIER'}</h3>
                   <div className="flex items-center gap-2">
-                    <div className="w-10 h-10 rounded-lg bg-background border border-border flex items-center justify-center shrink-0">
+                    <div className="w-10 h-10 rounded-xl bg-primary/10 border border-primary/20 flex items-center justify-center shrink-0">
                       {cfg.commissionType === 'PERCENTAGE' ? <Percent size={18} className="text-primary" /> : <DollarSign size={18} className="text-primary" />}
                     </div>
                     <div className="flex-1 relative">
                        <input 
                          type="number" 
+                         step="0.01"
                          value={cfg.commissionValue}
                          onChange={(e) => handleUpdate(cfg.id, e.target.value)}
-                         className="w-full h-10 pl-3 pr-10 border border-border rounded-lg bg-background text-[15px] font-mono outline-none focus:border-primary"
+                         className="w-full h-10 pl-3 pr-10 border border-border rounded-lg bg-background text-[15px] font-mono font-bold outline-none focus:border-primary transition-colors"
                        />
                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted font-bold text-[13px]">{cfg.commissionType === 'PERCENTAGE' ? '%' : '₹'}</span>
                     </div>
@@ -81,14 +113,18 @@ export default function CommissionPage() {
           </div>
         )}
         <div className="mt-6 flex justify-end">
-           <button className="h-10 px-6 rounded-lg bg-primary text-black font-bold text-[13px] flex items-center gap-2 hover:bg-primary/90">
-             <Save size={16} /> Deploy Configuration
+           <button 
+             onClick={handleDeploy} 
+             disabled={loading}
+             className="h-10 px-6 rounded-xl bg-primary text-black font-bold text-[13px] flex items-center gap-2 hover:bg-primary/90 transition-transform active:scale-95 disabled:opacity-50"
+           >
+             <Save size={16} /> {loading ? 'Deploying...' : 'Deploy Configuration'}
            </button>
         </div>
       </div>
       
       <div className="opacity-50 pointer-events-none">
-        <div className="card border border-border p-6">
+        <div className="card border border-border p-6 shadow-sm">
           <h2 className="text-[16px] font-bold text-text-primary mb-4">DTH & Utility (Coming Soon)</h2>
           <p className="text-[13px] text-text-muted">Additional commission splits for utilities will be available here.</p>
         </div>

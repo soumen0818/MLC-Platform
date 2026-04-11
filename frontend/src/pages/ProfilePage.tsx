@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { ROLE_LABELS } from '@/types';
 import { getInitials } from '@/lib/utils';
@@ -9,7 +9,8 @@ import toast from 'react-hot-toast';
 export default function ProfilePage() {
   const { user, fetchMe } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Form forms
@@ -22,6 +23,20 @@ export default function ProfilePage() {
 
   if (!user) return null;
 
+  const [myDocs, setMyDocs] = useState<any[]>([]);
+
+  const fetchMyDocs = async () => {
+    if (user.role === 'SUPER_ADMIN') return;
+    try {
+      const { data } = await api.get('/kyc/my');
+      setMyDocs(data.documents || []);
+    } catch (e) {}
+  };
+
+  useEffect(() => {
+    fetchMyDocs();
+  }, []);
+
   const handleSaveProfile = async () => {
     // Pre-flight validation
     if (formData.phone && !/^\d{10}$/.test(formData.phone)) {
@@ -30,7 +45,7 @@ export default function ProfilePage() {
     }
 
     try {
-      setIsSubmitting(true);
+      setIsSavingProfile(true);
       await api.patch(`/users/${user.id}/profile`, formData);
       await fetchMe(); 
       toast.success('Profile updated successfully');
@@ -38,7 +53,7 @@ export default function ProfilePage() {
     } catch (e) {
       toast.error('Failed to update profile');
     } finally {
-      setIsSubmitting(false);
+      setIsSavingProfile(false);
     }
   };
 
@@ -54,7 +69,7 @@ export default function ProfilePage() {
     }
 
     try {
-      setIsSubmitting(true);
+      setIsUploading(true);
       
       const payload = new FormData();
       payload.append('docType', docType);
@@ -65,11 +80,12 @@ export default function ProfilePage() {
       });
 
       await fetchMe(); 
+      await fetchMyDocs();
       toast.success(`${file.name} successfully transmitted to secure server.`);
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to upload document');
     } finally {
-      setIsSubmitting(false);
+      setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -126,8 +142,8 @@ export default function ProfilePage() {
                    <button onClick={() => setIsEditing(false)} className="flex-1 h-10 rounded-lg bg-background-secondary border border-border text-text-primary text-[13px] font-semibold hover:bg-background outline-none cursor-pointer flex justify-center items-center gap-2">
                       <X size={16}/> Cancel
                    </button>
-                   <button onClick={handleSaveProfile} disabled={isSubmitting} className="flex-1 h-10 rounded-lg bg-primary border-none text-black text-[13px] font-bold hover:bg-primary/90 outline-none cursor-pointer flex justify-center items-center gap-2 opacity-disabled">
-                      {isSubmitting ? 'Saving...' : <><Save size={16}/> Save Changes</>}
+                   <button onClick={handleSaveProfile} disabled={isSavingProfile} className="flex-1 h-10 rounded-lg bg-primary border-none text-black text-[13px] font-bold hover:bg-primary/90 outline-none cursor-pointer flex justify-center items-center gap-2 opacity-disabled">
+                      {isSavingProfile ? 'Saving...' : <><Save size={16}/> Save Changes</>}
                    </button>
                 </div>
              </div>
@@ -165,23 +181,30 @@ export default function ProfilePage() {
                  <>
                    <CheckCircle2 size={40} className="text-emerald-500 mb-3" />
                    <p className="text-[16px] font-bold text-text-primary">Fully Verified</p>
-                   <p className="text-[13px] text-text-secondary mt-1">Your identity documents have been approved by the Admin node.</p>
+                   <p className="text-[13px] text-text-secondary mt-1">Your identity documents have been approved by the parent node.</p>
                  </>
                ) : user.kycStatus === 'SUBMITTED' ? (
                  <>
                    <FileCheck size={40} className="text-blue-500 mb-3" />
                    <p className="text-[16px] font-bold text-text-primary">Under Review</p>
-                   <p className="text-[13px] text-text-secondary mt-1">Your documents have been securely transmitted. Awaiting Super Admin review protocol.</p>
+                   <p className="text-[13px] text-text-secondary mt-1">Your documents have been securely transmitted. Awaiting parent node review protocol.</p>
                  </>
-               ) : (
+               ) : user.kycStatus === 'REJECTED' ? (
                  <>
-                   <AlertCircle size={40} className="text-amber-500 mb-2" />
-                   <p className="text-[16px] font-bold text-text-primary">Verification Pending</p>
-                   <p className="text-[13px] text-text-secondary mt-1 mb-5">Please upload your government IDs and business proofs to unlock your dashboard functionalities.</p>
+                   <AlertCircle size={40} className="text-red-500 mb-2" />
+                   <p className="text-[16px] font-bold text-red-500">Document Rejected</p>
+                   <p className="text-[13px] text-text-secondary mt-1 mb-4">One or more of your documents were rejected. Please review the reasons and resubmit.</p>
                    
-                   <div className="w-full max-w-[250px] mb-4">
-                     <label className="block text-[11px] uppercase text-left tracking-wider font-semibold text-text-secondary mb-1.5">Document Type</label>
-                     <select value={docType} onChange={e=>setDocType(e.target.value)} disabled={isSubmitting} className="w-full h-10 px-3 border border-border rounded-lg bg-background text-[13px] font-medium outline-none focus:border-primary">
+                   {myDocs.filter(d => d.status === 'REJECTED').map(doc => (
+                     <div key={doc.id} className="w-full text-left bg-red-500/10 border border-red-500/20 rounded-lg p-3 mb-4">
+                       <span className="block text-[12px] font-bold text-red-500 mb-1">{doc.docType.replace('_', ' ')}</span>
+                       <span className="block text-[13px] text-red-400">{doc.rejectionReason || 'No specific reason provided by parent node.'}</span>
+                     </div>
+                   ))}
+
+                   <div className="w-full max-w-[250px] mb-4 text-left">
+                     <label className="block text-[11px] uppercase tracking-wider font-semibold text-text-secondary mb-1.5">Resubmit Document</label>
+                     <select value={docType} onChange={e=>setDocType(e.target.value)} disabled={isUploading} className="w-full h-10 px-3 border border-border rounded-lg bg-background text-[13px] font-medium outline-none focus:border-primary">
                         <option value="AADHAAR_FRONT">Aadhaar (Front)</option>
                         <option value="AADHAAR_BACK">Aadhaar (Back)</option>
                         <option value="PAN">PAN Card</option>
@@ -198,11 +221,43 @@ export default function ProfilePage() {
                      accept="image/jpeg, image/png, image/webp, application/pdf"
                    />
                    <button 
-                     disabled={isSubmitting}
+                     disabled={isUploading}
+                     className="px-6 h-10 rounded-lg bg-red-500/20 text-red-500 font-bold text-[13px] border border-red-500/50 outline-none cursor-pointer flex items-center gap-2 hover:bg-red-500/30 transition-all opacity-disabled w-full max-w-[250px] justify-center"
+                     onClick={() => fileInputRef.current?.click()}
+                   >
+                     {isUploading ? 'Uploading securely...' : <><UploadCloud size={16} /> Re-Upload Document</>}
+                   </button>
+                 </>
+               ) : (
+                 <>
+                   <AlertCircle size={40} className="text-amber-500 mb-2" />
+                   <p className="text-[16px] font-bold text-text-primary">Verification Pending</p>
+                   <p className="text-[13px] text-text-secondary mt-1 mb-5">Please upload your government IDs and business proofs to unlock your dashboard functionalities.</p>
+                   
+                   <div className="w-full max-w-[250px] mb-4">
+                     <label className="block text-[11px] uppercase text-left tracking-wider font-semibold text-text-secondary mb-1.5">Document Type</label>
+                     <select value={docType} onChange={e=>setDocType(e.target.value)} disabled={isUploading} className="w-full h-10 px-3 border border-border rounded-lg bg-background text-[13px] font-medium outline-none focus:border-primary">
+                        <option value="AADHAAR_FRONT">Aadhaar (Front)</option>
+                        <option value="AADHAAR_BACK">Aadhaar (Back)</option>
+                        <option value="PAN">PAN Card</option>
+                        <option value="GST">GST Certificate</option>
+                        <option value="CANCELLED_CHEQUE">Cancelled Cheque</option>
+                     </select>
+                   </div>
+
+                   <input 
+                     type="file" 
+                     className="hidden" 
+                     ref={fileInputRef} 
+                     onChange={handleFileChange} 
+                     accept="image/jpeg, image/png, image/webp, application/pdf"
+                   />
+                   <button 
+                     disabled={isUploading}
                      className="px-6 h-10 rounded-lg bg-primary text-black font-bold text-[13px] border-none outline-none cursor-pointer flex items-center gap-2 shadow-[0_0_15px_rgba(204,255,0,0.15)] hover:bg-primary/90 transition-all opacity-disabled w-full max-w-[250px] justify-center"
                      onClick={() => fileInputRef.current?.click()}
                    >
-                     {isSubmitting ? 'Uploading securely...' : <><UploadCloud size={16} /> Select Required Documents</>}
+                     {isUploading ? 'Uploading securely...' : <><UploadCloud size={16} /> Select Required Documents</>}
                    </button>
                  </>
                )}

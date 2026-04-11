@@ -1,14 +1,37 @@
 import { useAuthStore } from '@/stores/authStore';
 import { useSidebarStore } from '@/stores/sidebarStore';
 import { formatCurrency } from '@/lib/utils';
-import { Bell, Search, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import { useState } from 'react';
+import { Bell, Search, Menu, PanelLeftClose, PanelLeftOpen, Wallet } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import Sidebar from './Sidebar';
+import api from '@/lib/api';
 
 export default function Topbar() {
   const { user } = useAuthStore();
   const { collapsed, toggle } = useSidebarStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [totalBalance, setTotalBalance] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!user || user.role === 'SUPER_ADMIN') return;
+    
+    const fetchBalance = async () => {
+      try {
+        const { data } = await api.get('/wallet/balance/full');
+        setTotalBalance(data.totalBalance ?? data.mainBalance ?? null);
+      } catch {
+        // fallback to auth token value
+        setTotalBalance(user.walletBalance);
+      }
+    };
+
+    fetchBalance();
+    // Refresh every 60 seconds to keep balance live
+    const timer = setInterval(fetchBalance, 60_000);
+    return () => clearInterval(timer);
+  }, [user]);
+
+  const displayBalance = totalBalance ?? user?.walletBalance ?? '0.00';
 
   return (
     <>
@@ -45,14 +68,21 @@ export default function Topbar() {
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Wallet */}
-            {user && (
-              <div className="hidden sm:flex items-center gap-2 bg-sidebar-bg border border-sidebar-border rounded-xl px-3.5 py-1.5">
-                <div className="w-[7px] h-[7px] rounded-full bg-primary" />
-                <span className="text-[10px] font-semibold text-text-muted uppercase tracking-[0.08em]">Wallet</span>
-                <span className="text-[13px] font-bold text-primary font-mono tracking-tight">
-                  {formatCurrency(user.walletBalance)}
-                </span>
+            {/* Wallet Balance — total (main + commission) */}
+            {user && user.role !== 'SUPER_ADMIN' && (
+              <div className="hidden sm:flex items-center gap-2.5 bg-sidebar-bg border border-sidebar-border rounded-xl px-3.5 py-2">
+                <div className="w-7 h-7 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+                  <Wallet size={13} className="text-primary" />
+                </div>
+                <div className="flex flex-col leading-none">
+                  <span className="text-[9px] font-bold text-text-muted uppercase tracking-[0.1em]">Total Balance</span>
+                  <span className="text-[14px] font-bold text-primary font-mono tracking-tight">
+                    {totalBalance === null
+                      ? <span className="text-[11px] text-text-muted animate-pulse">Loading...</span>
+                      : formatCurrency(displayBalance)
+                    }
+                  </span>
+                </div>
               </div>
             )}
 

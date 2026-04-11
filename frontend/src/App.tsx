@@ -151,6 +151,7 @@ function App() {
           <Route path="/state-head/wallet" element={<StateHeadWalletPage />} />
           <Route path="/state-head/commission" element={<StateHeadCommissionPage />} />
           <Route path="/state-head/withdraw" element={<StateHeadWithdrawPage />} />
+          <Route path="/state-head/kyc" element={<AdminKycPage />} />
         </Route>
 
         {/* Master Distributor Routes */}
@@ -168,6 +169,7 @@ function App() {
           <Route path="/master/wallet" element={<MasterWalletPage />} />
           <Route path="/master/commission" element={<MasterCommissionPage />} />
           <Route path="/master/withdraw" element={<MasterWithdrawPage />} />
+          <Route path="/master/kyc" element={<AdminKycPage />} />
         </Route>
 
         {/* Distributor Routes */}
@@ -185,6 +187,7 @@ function App() {
           <Route path="/distributor/wallet" element={<DistWalletPage />} />
           <Route path="/distributor/commission" element={<DistCommissionPage />} />
           <Route path="/distributor/withdraw" element={<DistWithdrawPage />} />
+          <Route path="/distributor/kyc" element={<AdminKycPage />} />
         </Route>
 
         {/* Retailer Routes */}

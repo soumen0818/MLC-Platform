@@ -27,7 +27,7 @@ export default function WalletPage() {
   const [amount, setAmount] = useState('');
   const [utr, setUtr] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [processingAction, setProcessingAction] = useState<{ id: string; action: 'APPROVED' | 'REJECTED' } | null>(null);
 
   const loadData = async () => {
     // Regular users (not SUPER_ADMIN) can make requests
@@ -81,7 +81,7 @@ export default function WalletPage() {
   const handleProcessRequest = async (id: string, action: 'APPROVED' | 'REJECTED') => {
     if (action === 'APPROVED' && !window.confirm('Are you sure? This will deduct from your balance.')) return;
     
-    setProcessingId(id);
+    setProcessingAction({ id, action });
     try {
       await api.patch(`/wallet/topup/${id}/process`, { action });
       alert(`Request ${action}`);
@@ -90,7 +90,7 @@ export default function WalletPage() {
     } catch (err: any) {
       alert(err.response?.data?.error || 'Failed to process');
     } finally {
-      setProcessingId(null);
+      setProcessingAction(null);
     }
   };
 
@@ -110,13 +110,13 @@ export default function WalletPage() {
             <form onSubmit={handleRequestTopup} className="space-y-4">
               <div>
                 <label className="block text-[13px] font-semibold text-text-secondary mb-1.5">Top-up Amount (₹)</label>
-                <input required type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background focus:border-primary outline-none" placeholder="Amount transferred to parent" />
+                <input required type="number" min="1" value={amount} onChange={e => setAmount(e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background focus:border-primary outline-none text-text-primary" placeholder="Amount transferred to parent" />
               </div>
               <div>
                 <label className="block text-[13px] font-semibold text-text-secondary mb-1.5">UTR / Bank Reference No.</label>
-                <input required type="text" value={utr} onChange={e => setUtr(e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background focus:border-primary outline-none" placeholder="e.g. 123456789012" />
+                <input required type="text" value={utr} onChange={e => setUtr(e.target.value)} className="w-full h-10 px-3 rounded-lg border border-border bg-background focus:border-primary outline-none text-text-primary" placeholder="e.g. 123456789012" />
               </div>
-              <button disabled={isSubmitting} type="submit" className="w-full h-10 mt-2 bg-primary text-white rounded-lg font-semibold hover:bg-primary/90 disabled:opacity-50">
+              <button disabled={isSubmitting} type="submit" className="w-full h-10 mt-2 bg-primary text-black rounded-lg font-bold hover:bg-primary/90 disabled:opacity-50 border-none outline-none cursor-pointer">
                 {isSubmitting ? 'Submitting...' : 'Send Request to Parent'}
               </button>
             </form>
@@ -125,34 +125,42 @@ export default function WalletPage() {
 
         {/* Parent: Approve Child Requests */}
         {user?.role !== 'RETAILER' && (
-          <div className={`card p-6 border border-border ${user?.role === 'SUPER_ADMIN' ? 'lg:col-span-2' : ''}`}>
+          <div className={`card p-6 border border-border bg-card ${user?.role === 'SUPER_ADMIN' ? 'lg:col-span-2' : ''}`}>
             <h2 className="text-[16px] font-bold text-text-primary mb-4">Pending Child Requests</h2>
             <div className="space-y-3">
               {isLoadingPending ? (
                 <p className="text-[13px] text-text-muted">Loading pending requests...</p>
               ) : pendingRequests.length === 0 ? (
-                <p className="text-[13px] text-text-muted">No pending requests from your downstream tree.</p>
-              ) : pendingRequests.map(req => (
-                <div key={req.id} className="p-4 border border-border rounded-xl flex flex-col sm:flex-row justify-between gap-4 sm:items-center bg-background/50">
-                  <div>
-                    <h3 className="text-[15px] font-bold text-text-primary mb-1">₹{req.amount}</h3>
-                    <p className="text-[13px] font-medium text-text-secondary border border-border bg-background inline-block px-1.5 rounded">{req.requesterName} ({req.requesterPhone})</p>
-                    <p className="text-[12px] text-text-muted mt-1 font-mono hover:text-text-primary">UTR: {req.utrNumber}</p>
+                <p className="text-[13px] text-text-muted bg-background/50 p-4 border border-border border-dashed text-center rounded-xl">No pending requests from your downstream tree.</p>
+              ) : pendingRequests.map(req => {
+                const isProcessingThis = processingAction?.id === req.id;
+                
+                return (
+                  <div key={req.id} className="p-4 border border-border rounded-xl flex flex-col sm:flex-row justify-between gap-4 sm:items-center bg-background/50 hover:border-text-muted transition-colors">
+                    <div>
+                      <h3 className="text-[16px] font-bold text-text-primary mb-1">₹{req.amount}</h3>
+                      <p className="text-[12px] font-medium text-text-secondary border border-border bg-background inline-block px-2 py-0.5 mt-1 rounded shadow-sm">{req.requesterName} ({req.requesterPhone})</p>
+                      <p className="text-[11px] text-text-muted mt-2 font-mono border-t border-border/50 pt-2">UTR: {req.utrNumber}</p>
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <button 
+                        onClick={() => handleProcessRequest(req.id, 'REJECTED')}
+                        disabled={isProcessingThis}
+                        className="px-4 py-2 bg-transparent text-red-500 border border-red-500/30 rounded-lg text-[13px] font-bold hover:bg-red-500 hover:text-white transition-all disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-red-500"
+                      >
+                        {isProcessingThis && processingAction.action === 'REJECTED' ? 'Rejecting...' : 'Reject'}
+                      </button>
+                      <button 
+                        onClick={() => handleProcessRequest(req.id, 'APPROVED')}
+                        disabled={isProcessingThis}
+                        className="px-4 py-2 bg-emerald-500 text-black border border-emerald-500 rounded-lg text-[13px] font-bold hover:bg-emerald-400 hover:border-emerald-400 shadow-[0_2px_10px_rgba(16,185,129,0.15)] transition-all disabled:opacity-50"
+                      >
+                        {isProcessingThis && processingAction.action === 'APPROVED' ? 'Approving...' : 'Approve (Credit)'}
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleProcessRequest(req.id, 'REJECTED')}
-                      disabled={processingId === req.id}
-                      className="px-4 py-1.5 bg-red-50 text-red-700 border border-red-200 rounded-lg text-[13px] font-semibold hover:bg-red-100 disabled:opacity-50"
-                    >Reject</button>
-                    <button 
-                      onClick={() => handleProcessRequest(req.id, 'APPROVED')}
-                      disabled={processingId === req.id}
-                      className="px-4 py-1.5 bg-green-50 text-green-700 border border-green-200 rounded-lg text-[13px] font-semibold hover:bg-green-100 disabled:opacity-50"
-                    >Approve (Credit)</button>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}

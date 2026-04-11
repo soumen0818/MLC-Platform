@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuthStore } from '@/stores/authStore';
 import api from '@/lib/api';
 import toast from 'react-hot-toast';
 import { UserPlus, Search, UserCheck, ShieldAlert, ArrowRight, X, Eye, EyeOff } from 'lucide-react';
@@ -25,8 +26,8 @@ const UsersPage = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [role, setRole] = useState('STATE_HEAD');
   const [submitting, setSubmitting] = useState(false);
+  const { user } = useAuthStore();
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -40,8 +41,22 @@ const UsersPage = () => {
 
   useEffect(() => { fetchUsers(); }, []);
 
+  const getChildRole = () => {
+    switch(user?.role) {
+      case 'SUPER_ADMIN': return { val: 'STATE_HEAD', label: 'State Head' };
+      case 'STATE_HEAD': return { val: 'MASTER_DISTRIBUTOR', label: 'Master Distributor' };
+      case 'MASTER_DISTRIBUTOR': return { val: 'DISTRIBUTOR', label: 'Distributor' };
+      case 'DISTRIBUTOR': return { val: 'RETAILER', label: 'Retailer' };
+      default: return null;
+    }
+  };
+
+  const childRole = getChildRole();
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!childRole) return;
 
     if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) {
       toast.error('Please enter a strictly valid email address.');
@@ -55,7 +70,7 @@ const UsersPage = () => {
 
     setSubmitting(true);
     try {
-      await api.post('/users', { email, password, role });
+      await api.post('/users', { email, password, role: childRole.val });
       toast.success('Account provisioned successfully! Waiting for user to activate it.');
       setShowAdd(false);
       setEmail('');
@@ -81,23 +96,25 @@ const UsersPage = () => {
           <h1 className="text-[22px] font-bold text-text-primary tracking-tight m-0">Directory</h1>
           <p className="text-[14px] text-text-secondary mt-1">Manage network users, monitor balances, and provision accounts.</p>
         </div>
-        <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 h-10 px-4 rounded-xl bg-primary text-black font-bold text-[13px] tracking-wide hover:bg-primary/90 transition-colors">
-          <UserPlus size={16} /> New User
-        </button>
+        {childRole && (
+          <button onClick={() => setShowAdd(!showAdd)} className="flex items-center gap-2 h-10 px-4 rounded-xl bg-primary text-black font-bold text-[13px] tracking-wide hover:bg-primary/90 transition-colors">
+            <UserPlus size={16} /> New User
+          </button>
+        )}
       </div>
 
-      {showAdd && (
+      {showAdd && childRole && (
         <div className="card p-6 border border-primary/30 shadow-[0_4px_24px_rgba(204,255,0,0.05)]">
           <h2 className="text-[16px] font-bold text-text-primary mb-4">Provision New Account</h2>
           <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-end">
             <div>
               <label className="block text-[12px] font-semibold text-text-secondary mb-1">Email</label>
-              <input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@example.com" className="w-full h-10 px-3 border border-border rounded-lg bg-background text-[13px] outline-none focus:border-primary" />
+              <input required type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="user@example.com" className="w-full h-10 px-3 border border-border rounded-lg bg-background text-[13px] outline-none focus:border-primary text-text-primary" />
             </div>
             <div>
               <label className="block text-[12px] font-semibold text-text-secondary mb-1">Password</label>
               <div className="relative">
-                <input required type={showPassword ? "text" : "password"} minLength={6} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Min 6 chars" className="w-full h-10 px-3 pr-10 border border-border rounded-lg bg-background text-[13px] outline-none focus:border-primary" />
+                <input required type={showPassword ? "text" : "password"} minLength={6} value={password} onChange={e=>setPassword(e.target.value)} placeholder="Min 6 chars" className="w-full h-10 px-3 pr-10 border border-border rounded-lg bg-background text-[13px] outline-none focus:border-primary text-text-primary" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-2 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary p-1">
                   {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
                 </button>
@@ -105,12 +122,9 @@ const UsersPage = () => {
             </div>
             <div>
               <label className="block text-[12px] font-semibold text-text-secondary mb-1">Assigned Role</label>
-              <select required value={role} onChange={e=>setRole(e.target.value)} className="w-full h-10 px-3 border border-border rounded-lg bg-background text-[13px] font-medium outline-none focus:border-primary">
-                <option value="STATE_HEAD">State Head</option>
-                <option value="MASTER_DISTRIBUTOR">Master Dist.</option>
-                <option value="DISTRIBUTOR">Distributor</option>
-                <option value="RETAILER">Retailer</option>
-              </select>
+              <div className="flex items-center w-full h-10 px-3 border border-border rounded-lg bg-background text-[13px] font-bold text-text-primary select-none cursor-not-allowed shadow-inner opacity-70">
+                {childRole.label}
+              </div>
             </div>
             <button disabled={submitting} type="submit" className="h-10 rounded-lg bg-primary text-black font-bold text-[13px] transition hover:bg-primary/90 disabled:opacity-70">
               {submitting ? 'Authenticating...' : 'Confirm'}

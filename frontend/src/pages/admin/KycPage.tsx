@@ -9,6 +9,8 @@ interface KycDocument {
   fileUrl: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   createdAt: string;
+  userName?: string;
+  userEmail?: string;
 }
 
 export default function KycPage() {
@@ -54,7 +56,8 @@ export default function KycPage() {
   };
 
   const filteredDocs = documents.filter(doc => 
-    doc.userId.toLowerCase().includes(search.toLowerCase()) || 
+    (doc.userName || '').toLowerCase().includes(search.toLowerCase()) || 
+    (doc.userEmail || '').toLowerCase().includes(search.toLowerCase()) || 
     doc.docType.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -72,7 +75,7 @@ export default function KycPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={18} />
           <input 
             type="text" 
-            placeholder="Search by ID or Type..." 
+            placeholder="Search by name, email or type..." 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full sm:w-[280px] h-10 pl-10 pr-4 rounded-xl border border-border bg-background focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all placeholder:text-text-muted text-[14px]"
@@ -85,7 +88,7 @@ export default function KycPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-border bg-background/50">
-                <th className="py-4 px-5 text-[12px] font-semibold text-text-secondary uppercase tracking-wider">User ID</th>
+                <th className="py-4 px-5 text-[12px] font-semibold text-text-secondary uppercase tracking-wider">Network Child</th>
                 <th className="py-4 px-5 text-[12px] font-semibold text-text-secondary uppercase tracking-wider">Document Type</th>
                 <th className="py-4 px-5 text-[12px] font-semibold text-text-secondary uppercase tracking-wider">Submitted</th>
                 <th className="py-4 px-5 text-[12px] font-semibold text-text-secondary uppercase tracking-wider">File</th>
@@ -114,9 +117,10 @@ export default function KycPage() {
                 filteredDocs.map((doc) => (
                   <tr key={doc.id} className="hover:bg-table-hover transition-colors">
                     <td className="py-4 px-5">
-                      <span className="text-[13px] font-medium font-mono text-text-secondary bg-background px-2 py-1 rounded border border-border">
-                        {doc.userId.substring(0, 8)}...
-                      </span>
+                      <div className="flex flex-col">
+                        <span className="text-[13px] font-semibold text-text-primary">{doc.userName || <span className="italic text-text-muted">Unset Name</span>}</span>
+                        <span className="text-[11px] text-text-secondary">{doc.userEmail}</span>
+                      </div>
                     </td>
                     <td className="py-4 px-5">
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[12px] font-medium bg-blue-50 text-blue-700 border border-blue-100">

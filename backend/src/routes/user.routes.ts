@@ -45,8 +45,8 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
 
     const conditions: any[] = [];
 
-    // Non-admins can only see their direct children
-    if (req.user!.role !== 'SUPER_ADMIN') {
+    // Every user (including SUPER_ADMIN) strictly sees only their direct children
+    if (req.user!.role !== 'SYSTEM') { // just a placeholder condition since we want it for all normal roles
       conditions.push(eq(users.parentId, req.user!.userId));
     }
 
