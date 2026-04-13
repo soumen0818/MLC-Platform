@@ -11,8 +11,9 @@ interface UserData {
   phone: string;
   role: string;
   walletBalance: string;
+  commissionWalletBalance: string;
+  upiId?: string;
   isActive: boolean;
-  kycStatus: string;
   createdAt: string;
 }
 
@@ -147,8 +148,8 @@ const UsersPage = () => {
                 <th className="py-3 px-4">User</th>
                 <th className="py-3 px-4">Contact</th>
                 <th className="py-3 px-4">Role</th>
-                <th className="py-3 px-4">Wallet</th>
-                <th className="py-3 px-4">Security & KYC</th>
+                <th className="py-3 px-4">Main Wallet</th>
+                <th className="py-3 px-4">Status</th>
                 <th className="py-3 px-4"></th>
               </tr>
             </thead>
@@ -178,10 +179,9 @@ const UsersPage = () => {
                       <div className="flex gap-1.5 items-center">
                         {u.isActive ? <UserCheck size={13} className="text-emerald-500" /> : <ShieldAlert size={13} className="text-amber-500" />}
                         <span className={`text-[11px] font-bold ${u.isActive ? 'text-emerald-500' : 'text-amber-500'}`}>
-                          {u.isActive ? 'ACCEPTED' : 'PENDING CLAIM'}
+                          {u.isActive ? 'ACTIVE' : 'PENDING CLAIM'}
                         </span>
                       </div>
-                      <span className="text-[10px] text-text-muted font-medium tracking-wide">KYC: {u.kycStatus}</span>
                     </div>
                   </td>
                   <td className="py-3 px-4 text-right">
@@ -221,6 +221,7 @@ const UsersPage = () => {
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-2">
                   <div className="flex justify-between items-center"><span className="text-gray-500 font-medium">Address:</span><span className="text-gray-900 font-mono text-[12px] select-all">{selectedUser.email}</span></div>
                   <div className="flex justify-between items-center"><span className="text-gray-500 font-medium">Telecom:</span><span className="text-gray-900 font-mono text-[12px] select-all">{selectedUser.phone || 'N/A'}</span></div>
+                  <div className="flex justify-between items-center"><span className="text-gray-500 font-medium">UPI ID:</span><span className="text-gray-900 font-mono text-[12px] select-all">{selectedUser.upiId || 'N/A'}</span></div>
                 </div>
               </div>
 
@@ -237,10 +238,6 @@ const UsersPage = () => {
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500 font-medium">Authorization:</span>
                     <span className={`${selectedUser.isActive ? 'text-green-600 font-bold bg-green-50 px-2 py-0.5 rounded' : 'text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded'}`}>{selectedUser.isActive ? 'ACTIVE' : 'LOCKED'}</span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500 font-medium">KYC Clearing:</span>
-                    <span className="text-gray-900 font-mono font-semibold">{selectedUser.kycStatus}</span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-gray-500 font-medium">Initialized:</span>

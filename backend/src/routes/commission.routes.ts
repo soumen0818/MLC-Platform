@@ -13,7 +13,7 @@ const configSchema = z.object({
   serviceType: z.string().min(1),
   role: z.enum(['STATE_HEAD', 'MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER']),
   commissionType: z.enum(['PERCENTAGE', 'FLAT']),
-  commissionValue: z.number().positive(),
+  commissionValue: z.number().min(0),
 });
 
 // GET /api/commission/my — get my earned commissions
@@ -133,7 +133,8 @@ router.post(
       }
     } catch (error: any) {
       if (error instanceof z.ZodError) {
-        res.status(400).json({ error: 'Validation failed', details: error.errors });
+        const readableErrors = error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+        res.status(400).json({ error: `Validation failed: ${readableErrors}` });
         return;
       }
       res.status(500).json({ error: error.message });

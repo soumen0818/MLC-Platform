@@ -13,11 +13,17 @@ export default function TopupPage() {
   const [amount, setAmount] = useState('');
   const [utr, setUtr] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [parentInfo, setParentInfo] = useState<any>(null);
 
   const fetchHistory = async () => {
     try {
-      const { data } = await api.get('/wallet/topup-requests/my');
+      const { data } = await api.get('/wallet/topup/my-requests');
       setRequests(data.requests || []);
+      
+      if (user?.parentId) {
+        const parentRes = await api.get(`/users/${user.parentId}`);
+        setParentInfo(parentRes.data.user);
+      }
     } catch {
       setRequests([]);
     } finally {
@@ -25,7 +31,9 @@ export default function TopupPage() {
     }
   };
 
-  useEffect(() => { fetchHistory(); }, []);
+  useEffect(() => { 
+    if (user) fetchHistory(); 
+  }, [user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +42,7 @@ export default function TopupPage() {
 
     setSubmitting(true);
     try {
-      await api.post('/wallet/topup-request', {
+      await api.post('/wallet/topup/request', {
         amount: parseFloat(amount),
         utrNumber: utr.trim(),
       });
@@ -84,6 +92,20 @@ export default function TopupPage() {
                   />
                 </div>
               </div>
+
+              {parentInfo && (
+                <div className="p-4 bg-primary/10 border border-primary/20 rounded-xl flex flex-col gap-1.5">
+                  <span className="text-[12px] font-bold text-primary uppercase tracking-wider">Send Money To Admin</span>
+                  {parentInfo.upiId ? (
+                    <div className="flex items-center justify-between">
+                       <span className="text-[15px] font-mono font-bold text-text-primary">{parentInfo.upiId}</span>
+                       <span className="text-[10px] bg-primary text-black px-2 py-0.5 rounded font-bold">UPI</span>
+                    </div>
+                  ) : (
+                    <span className="text-[13px] text-text-muted">Your admin hasn't set their UPI ID yet. Reach out to them directly.</span>
+                  )}
+                </div>
+              )}
 
               <div>
                 <label className="block text-[12px] font-bold text-text-secondary mb-1.5 uppercase tracking-wider">Bank UTR / Reference No.</label>

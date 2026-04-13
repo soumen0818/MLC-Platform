@@ -11,7 +11,6 @@ import RoleGuard from '@/components/layout/RoleGuard';
 // Auth Pages
 import LoginPage from '@/pages/auth/LoginPage';
 import ChangePasswordPage from '@/pages/auth/ChangePasswordPage';
-import KycPendingPage from '@/pages/auth/KycPendingPage';
 import AccountPendingPage from '@/pages/auth/AccountPendingPage';
 
 // Shared Pages
@@ -25,7 +24,6 @@ import AdminCommissionPage from '@/pages/admin/CommissionPage';
 import AdminWalletPage from '@/pages/admin/WalletPage';
 import AdminWithdrawalsPage from '@/pages/admin/WithdrawalsPage';
 import AdminRechargesPage from '@/pages/admin/RechargesPage';
-import AdminKycPage from '@/pages/admin/KycPage';
 import AdminReportsPage from '@/pages/admin/ReportsPage';
 import AdminServicesPage from '@/pages/admin/ServicesPage';
 import AdminSettingsPage from '@/pages/admin/SettingsPage';
@@ -113,7 +111,6 @@ function App() {
         />
 
         <Route path="/change-password" element={<ChangePasswordPage />} />
-        <Route path="/kyc" element={<KycPendingPage />} />
         <Route path="/account-pending" element={<AccountPendingPage />} />
 
         {/* Admin Routes */}
@@ -130,7 +127,6 @@ function App() {
           <Route path="/admin/wallet" element={<AdminWalletPage />} />
           <Route path="/admin/withdrawals" element={<AdminWithdrawalsPage />} />
           <Route path="/admin/recharges" element={<AdminRechargesPage />} />
-          <Route path="/admin/kyc" element={<AdminKycPage />} />
           <Route path="/admin/reports" element={<AdminReportsPage />} />
           <Route path="/admin/services" element={<AdminServicesPage />} />
           <Route path="/admin/settings" element={<AdminSettingsPage />} />
@@ -151,7 +147,6 @@ function App() {
           <Route path="/state-head/wallet" element={<StateHeadWalletPage />} />
           <Route path="/state-head/commission" element={<StateHeadCommissionPage />} />
           <Route path="/state-head/withdraw" element={<StateHeadWithdrawPage />} />
-          <Route path="/state-head/kyc" element={<AdminKycPage />} />
         </Route>
 
         {/* Master Distributor Routes */}
@@ -169,7 +164,6 @@ function App() {
           <Route path="/master/wallet" element={<MasterWalletPage />} />
           <Route path="/master/commission" element={<MasterCommissionPage />} />
           <Route path="/master/withdraw" element={<MasterWithdrawPage />} />
-          <Route path="/master/kyc" element={<AdminKycPage />} />
         </Route>
 
         {/* Distributor Routes */}
@@ -187,7 +181,6 @@ function App() {
           <Route path="/distributor/wallet" element={<DistWalletPage />} />
           <Route path="/distributor/commission" element={<DistCommissionPage />} />
           <Route path="/distributor/withdraw" element={<DistWithdrawPage />} />
-          <Route path="/distributor/kyc" element={<AdminKycPage />} />
         </Route>
 
         {/* Retailer Routes */}

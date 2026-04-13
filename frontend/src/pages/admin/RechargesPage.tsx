@@ -14,6 +14,12 @@ interface RechargeTxn {
   failureReason?: string;
 }
 
+const PROVIDERS = [
+  { id: 'bharatpays', name: 'BharatPays', tag: 'BBPS', active: true },
+  // Future providers can be added here:
+  // { id: 'plansinfo', name: 'PlansInfo', tag: 'API', active: false },
+];
+
 export default function RechargesPage() {
   const { user, fetchMe } = useAuthStore();
   const [transactions, setTransactions] = useState<RechargeTxn[]>([]);
@@ -24,16 +30,13 @@ export default function RechargesPage() {
   const [amount, setAmount] = useState('');
   const [operator, setOperator] = useState('');
   const [serviceType, setServiceType] = useState('MOBILE');
+  const [selectedProvider, setSelectedProvider] = useState('bharatpays');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const fetchTransactions = async () => {
     setIsLoading(true);
     try {
-      // If admin, we fetch all. If retailer, we fetch their own.
       const endpoint = user?.role === 'SUPER_ADMIN' ? '/recharge/all' : '/recharge/history';
-      // MOCK: Assuming /recharge/all or /my exists. Let's use /wallet/transactions or a mock if it fails.
-      // Wait, we have backend for recharge tracking.
-      // But we haven't checked if `/recharge/my` exists. If not, catching error seamlessly.
       try {
         const { data } = await api.get(endpoint);
         setTransactions(data.transactions || []);
@@ -81,6 +84,34 @@ export default function RechargesPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="card p-6 border-2 border-primary/20 shadow-[0_8px_32px_rgba(204,255,0,0.05)]">
+
+            {/* Provider Selector */}
+            <div className="mb-5">
+              <label className="block text-[11px] font-bold text-text-muted uppercase tracking-wider mb-2">Recharge Provider</label>
+              <div className="flex gap-3">
+                {PROVIDERS.map(p => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => p.active && setSelectedProvider(p.id)}
+                    className={`relative flex items-center gap-2.5 px-4 py-2.5 rounded-xl border transition-all ${
+                      selectedProvider === p.id
+                        ? 'border-emerald-500 bg-emerald-500/15 shadow-[0_0_12px_rgba(16,185,129,0.15)]'
+                        : p.active
+                          ? 'border-border bg-background hover:border-text-muted cursor-pointer'
+                          : 'border-border bg-background opacity-40 cursor-not-allowed'
+                    }`}
+                  >
+                    <div className={`w-2.5 h-2.5 rounded-full ${selectedProvider === p.id ? 'bg-emerald-500 animate-pulse shadow-[0_0_6px_rgba(16,185,129,0.6)]' : p.active ? 'bg-text-muted' : 'bg-border'}`} />
+                    <span className={`text-[13px] font-bold ${selectedProvider === p.id ? 'text-emerald-600' : 'text-text-secondary'}`}>{p.name}</span>
+                    <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${selectedProvider === p.id ? 'bg-emerald-500 text-white' : 'bg-background border border-border text-text-muted'}`}>{p.tag}</span>
+                    {!p.active && <span className="text-[9px] text-text-muted font-bold">SOON</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Service Type Tabs */}
             <div className="flex gap-4 mb-6 relative z-10">
               <button onClick={()=>setServiceType('MOBILE')} className={`flex flex-col items-center justify-center p-3 rounded-xl border flex-1 transition-colors ${serviceType==='MOBILE' ? 'bg-primary text-black border-primary' : 'bg-background border-border text-text-secondary hover:border-text-muted'}`}>
                 <Smartphone size={24} className="mb-2" />
@@ -106,12 +137,20 @@ export default function RechargesPage() {
                   <label className="block text-[13px] font-semibold text-text-secondary mb-1.5">Operator</label>
                   <select required value={operator} onChange={e => setOperator(e.target.value)} className="w-full h-12 px-3 rounded-xl border border-border bg-background focus:border-primary outline-none font-medium">
                     <option value="" disabled>Select Operator</option>
-                    <option value="Jio">Reliance Jio</option>
-                    <option value="Airtel">Airtel</option>
-                    <option value="Vi">Vodafone Idea (Vi)</option>
-                    <option value="BSNL">BSNL</option>
-                    <option value="TataSky">Tata Sky</option>
-                    <option value="DishTV">Dish TV</option>
+                    {serviceType === 'MOBILE' ? (
+                      <>
+                        <option value="Jio">Reliance Jio</option>
+                        <option value="Airtel">Airtel</option>
+                        <option value="Vi">Vodafone Idea (Vi)</option>
+                        <option value="BSNL">BSNL</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="TataSky">Tata Sky</option>
+                        <option value="DishTV">Dish TV</option>
+                        <option value="Airtel">Airtel DTH</option>
+                      </>
+                    )}
                   </select>
                 </div>
                 <div className="flex-[1]">

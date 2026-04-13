@@ -28,6 +28,7 @@ export default function WalletPage() {
   const [utr, setUtr] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [processingAction, setProcessingAction] = useState<{ id: string; action: 'APPROVED' | 'REJECTED' } | null>(null);
+  const [parentInfo, setParentInfo] = useState<any>(null);
 
   const loadData = async () => {
     // Regular users (not SUPER_ADMIN) can make requests
@@ -40,6 +41,16 @@ export default function WalletPage() {
         console.error(e);
       } finally {
         setIsLoadingMy(false);
+      }
+      
+      // Fetch parent info to get their UPI ID
+      if (user?.parentId) {
+        try {
+          const parentRes = await api.get(`/users/${user.parentId}`);
+          setParentInfo(parentRes.data.user);
+        } catch (e) {
+          console.error(e);
+        }
       }
     }
 
@@ -105,8 +116,26 @@ export default function WalletPage() {
         
         {/* Child: Request Topup Form */}
         {user?.role !== 'SUPER_ADMIN' && (
-          <div className="card p-6 h-fit bg-card border border-border">
-            <h2 className="text-[16px] font-bold text-text-primary mb-4">Request Wallet Top-up</h2>
+          <div className="card p-6 h-fit bg-card border border-border flex flex-col gap-4">
+            <div>
+              <h2 className="text-[16px] font-bold text-text-primary">Request Wallet Top-up</h2>
+              <p className="text-[13px] text-text-secondary mt-1">Request your upstream admin to add funds.</p>
+            </div>
+
+            {parentInfo && (
+              <div className="p-4 bg-primary/10 border border-primary/20 rounded-xl flex flex-col gap-1.5">
+                <span className="text-[12px] font-bold text-primary uppercase tracking-wider">Send Money To Admin</span>
+                {parentInfo.upiId ? (
+                  <div className="flex items-center justify-between">
+                     <span className="text-[15px] font-mono font-bold text-text-primary">{parentInfo.upiId}</span>
+                     <span className="text-[10px] bg-primary text-black px-2 py-0.5 rounded font-bold">UPI</span>
+                  </div>
+                ) : (
+                  <span className="text-[13px] text-text-muted">Your admin hasn't set their UPI ID yet. Reach out to them directly.</span>
+                )}
+              </div>
+            )}
+
             <form onSubmit={handleRequestTopup} className="space-y-4">
               <div>
                 <label className="block text-[13px] font-semibold text-text-secondary mb-1.5">Top-up Amount (₹)</label>

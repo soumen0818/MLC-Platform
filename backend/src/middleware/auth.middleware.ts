@@ -5,7 +5,6 @@ export interface AuthPayload {
   userId: string;
   role: string;
   parentId: string | null;
-  kycStatus: string;
   isActive: boolean;
   requiresPasswordChange: boolean;
 }

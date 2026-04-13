@@ -40,12 +40,7 @@ export const userRoleEnum = pgEnum('user_role', [
   'RETAILER',
 ]);
 
-export const kycStatusEnum = pgEnum('kyc_status', [
-  'PENDING',
-  'SUBMITTED',
-  'APPROVED',
-  'REJECTED',
-]);
+
 
 export const txnTypeEnum = pgEnum('txn_type', ['CREDIT', 'DEBIT']);
 
@@ -96,21 +91,6 @@ export const withdrawalStatusEnum = pgEnum('withdrawal_status', [
   'REJECTED',
 ]);
 
-export const docTypeEnum = pgEnum('doc_type', [
-  'AADHAAR_FRONT',
-  'AADHAAR_BACK',
-  'PAN',
-  'GST',
-  'SELFIE',
-  'CANCELLED_CHEQUE',
-]);
-
-export const docStatusEnum = pgEnum('doc_status', [
-  'PENDING',
-  'APPROVED',
-  'REJECTED',
-]);
-
 export const topupStatusEnum = pgEnum('topup_status', [
   'PENDING',
   'APPROVED',
@@ -129,10 +109,10 @@ export const users = pgTable('users', {
   role: userRoleEnum('role').notNull(),
   parentId: uuid('parent_id'),
   walletBalance: decimal('wallet_balance', { precision: 12, scale: 2 }).notNull().default('0.00'),
-  commissionWalletBalance: decimal('commission_wallet_balance', { precision: 12, scale: 2 }).notNull().default('0.00'),
-  kycStatus: kycStatusEnum('kyc_status').notNull().default('PENDING'),
+  commissionWalletBalance: decimal('commission_wallet_balance', { precision: 12, scale: 2 }).notNull().default('0.00'), // Read-only counter: tracks total lifetime commission earned (never debited)
   isActive: boolean('is_active').notNull().default(false),
   requiresPasswordChange: boolean('requires_password_change').notNull().default(true),
+  upiId: varchar('upi_id', { length: 100 }),
   createdBy: uuid('created_by'),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
@@ -213,20 +193,6 @@ export const withdrawalRequests = pgTable('withdrawal_requests', {
   rejectionReason: text('rejection_reason'),
 });
 
-// KYC Documents table — files stored as binary in Neon DB
-export const kycDocuments = pgTable('kyc_documents', {
-  id: uuid('id').defaultRandom().primaryKey(),
-  userId: uuid('user_id').notNull().references(() => users.id),
-  docType: docTypeEnum('doc_type').notNull(),
-  fileData: bytea('file_data').notNull(),
-  mimeType: varchar('mime_type', { length: 100 }).notNull(),
-  originalName: varchar('original_name', { length: 255 }).notNull(),
-  status: docStatusEnum('status').notNull().default('PENDING'),
-  reviewedBy: uuid('reviewed_by').references(() => users.id),
-  reviewedAt: timestamp('reviewed_at'),
-  rejectionReason: text('rejection_reason'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
 
 // Topup Requests table
 export const topupRequests = pgTable('topup_requests', {
@@ -268,7 +234,6 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   rechargeTransactions: many(rechargeTransactions),
   commissionDistributions: many(commissionDistributions),
   withdrawalRequests: many(withdrawalRequests),
-  kycDocuments: many(kycDocuments),
   topupRequestsMade: many(topupRequests, { relationName: 'requestedBy' }),
   topupRequestsCredited: many(topupRequests, { relationName: 'creditedBy' }),
 }));
@@ -317,16 +282,6 @@ export const withdrawalRequestsRelations = relations(withdrawalRequests, ({ one 
   }),
 }));
 
-export const kycDocumentsRelations = relations(kycDocuments, ({ one }) => ({
-  user: one(users, {
-    fields: [kycDocuments.userId],
-    references: [users.id],
-  }),
-  reviewedByUser: one(users, {
-    fields: [kycDocuments.reviewedBy],
-    references: [users.id],
-  }),
-}));
 
 export const topupRequestsRelations = relations(topupRequests, ({ one }) => ({
   requestedByUser: one(users, {

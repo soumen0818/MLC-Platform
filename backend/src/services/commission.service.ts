@@ -126,7 +126,7 @@ export class CommissionService {
     for (const dist of distributions) {
       const amount = parseFloat(dist.amountCredited);
 
-      // Debit the commission back
+      // Debit from MAIN wallet (where commission was originally credited)
       await WalletService.debitWallet(
         dist.userId,
         amount,

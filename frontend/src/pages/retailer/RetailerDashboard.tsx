@@ -1,22 +1,38 @@
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { formatCurrency } from '@/lib/utils';
-import { StatusPill } from '@/components/ui';
+import { LoadingSpinner } from '@/components/ui';
 import { Wallet, TrendingUp, Smartphone, ArrowUpRight, Zap, CreditCard, Inbox } from 'lucide-react';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useNavigate } from 'react-router-dom';
-
-const weekData: any[] = [];
-const transactions: any[] = [];
-
+import api from '@/lib/api';
 export default function RetailerDashboard() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
-  const stats = {
-    walletBalance: user?.walletBalance || '0.00',
-    todayRecharges: 0,
-    todayRechargeAmount: '0.00',
-    todayCommission: '0.00',
-  };
+  const [stats, setStats] = useState<any>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadDashboard = async () => {
+      try {
+        const [statsRes, txRes] = await Promise.all([
+          api.get('/reports/dashboard-stats'),
+          api.get('/wallet/transactions?limit=5')
+        ]);
+        setStats(statsRes.data);
+        setTransactions(txRes.data.transactions || []);
+      } catch (err) {
+        console.error('Failed to load dashboard', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadDashboard();
+  }, []);
+
+  if (loading) return <LoadingSpinner fullScreen />;
+
+  const walletBal = stats?.walletBalance || user?.walletBalance || '0.00';
 
   return (
     <div className="flex flex-col gap-6 font-sans">
@@ -33,7 +49,7 @@ export default function RetailerDashboard() {
             <span className="text-[12px] text-white/70 font-medium">Wallet Balance</span>
           </div>
           <p className="text-[32px] font-bold text-white mb-4 font-mono">
-            {formatCurrency(stats.walletBalance)}
+            {formatCurrency(walletBal)}
           </p>
           <div className="flex gap-2.5">
             <button onClick={() => navigate('/retailer/topup')} className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl border-none bg-white text-black text-[13px] font-semibold cursor-pointer shadow-sm hover:bg-gray-50 transition-colors">
@@ -56,8 +72,8 @@ export default function RetailerDashboard() {
             </div>
             <span className="text-[13px] text-text-secondary">Today's Recharges</span>
           </div>
-          <p className="text-[22px] font-bold text-text-primary m-0 font-mono">{stats.todayRecharges}</p>
-          <p className="text-[11px] text-text-muted mt-1">{formatCurrency(stats.todayRechargeAmount)} volume</p>
+          <p className="text-[22px] font-bold text-text-primary m-0 font-mono">{stats?.todayRecharges || 0}</p>
+          <p className="text-[11px] text-text-muted mt-1">{formatCurrency(stats?.todayRechargeAmount || '0')} volume</p>
         </div>
 
         <div className="card p-5">
@@ -67,7 +83,7 @@ export default function RetailerDashboard() {
             </div>
             <span className="text-[13px] text-text-secondary">Commission Earned</span>
           </div>
-          <p className="text-[22px] font-bold text-emerald-500 m-0 font-mono">{formatCurrency(stats.todayCommission)}</p>
+          <p className="text-[22px] font-bold text-emerald-500 m-0 font-mono">{formatCurrency(stats?.todayCommissions || '0')}</p>
           <p className="text-[11px] text-text-muted mt-1">Today</p>
         </div>
 
@@ -84,32 +100,6 @@ export default function RetailerDashboard() {
         </div>
       </div>
 
-      {/* Chart */}
-      <div className="card p-6">
-        <h3 className="text-[15px] font-semibold text-text-primary mb-4">Weekly Activity</h3>
-        {weekData.length > 0 ? (
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={weekData}>
-              <defs>
-                <linearGradient id="colorRecharges" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#2D5BE3" stopOpacity={0.1} />
-                  <stop offset="95%" stopColor="#2D5BE3" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#E4E4E7" vertical={false} />
-              <XAxis dataKey="name" stroke="#52525B" fontSize={11} axisLine={false} tickLine={false} />
-              <YAxis stroke="#52525B" fontSize={11} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ background: '#0A0A0A', border: 'none', borderRadius: '10px', color: '#fff', fontSize: '12px' }} />
-              <Area type="monotone" dataKey="recharges" stroke="#2D5BE3" strokeWidth={2} fill="url(#colorRecharges)" />
-            </AreaChart>
-          </ResponsiveContainer>
-        ) : (
-          <div className="h-[220px] flex flex-col items-center justify-center text-text-muted bg-background rounded-xl">
-            <Inbox size={32} className="mb-2 opacity-50" />
-            <p className="text-[13px] font-medium m-0">No data available for charts</p>
-          </div>
-        )}
-      </div>
 
       {/* Transactions */}
       <div className="card p-6">
@@ -122,19 +112,18 @@ export default function RetailerDashboard() {
           <div key={i} className={`flex items-center justify-between py-3 ${i < transactions.length - 1 ? 'border-b border-border' : ''}`}>
             <div className="flex items-center gap-2.5">
               <div className="w-[38px] h-[38px] rounded-xl bg-background flex items-center justify-center">
-                <Smartphone size={14} className="text-text-primary" />
+                {txn.type === 'CREDIT' ? <TrendingUp size={14} className="text-emerald-500" /> : <CreditCard size={14} className="text-amber-500" />}
               </div>
               <div>
-                <p className="text-[13px] font-medium text-text-primary m-0">{txn.number}</p>
-                <p className="text-[11px] text-text-muted m-0">{txn.operator}</p>
+                <p className="text-[13px] font-medium text-text-primary m-0 capitalize">{txn.reason?.replace(/_/g, ' ')}</p>
+                <p className="text-[11px] text-text-muted m-0">{new Date(txn.createdAt).toLocaleDateString()}</p>
               </div>
             </div>
-            <div className="flex items-center gap-2.5">
-              <div className="text-right">
-                <p className="text-[13px] font-bold text-text-primary font-mono m-0">{formatCurrency(txn.amount)}</p>
-                {txn.commission > 0 && <p className="text-[11px] font-mono text-emerald-500 m-0">+{formatCurrency(txn.commission)}</p>}
-              </div>
-              <StatusPill status={txn.status} />
+            <div className="flex flex-col items-end gap-1">
+              <p className={`text-[13px] font-bold font-mono m-0 ${txn.type === 'CREDIT' ? 'text-emerald-500' : 'text-text-primary'}`}>
+                {txn.type === 'CREDIT' ? '+' : '-'}{formatCurrency(txn.amount)}
+              </p>
+              <span className="text-[10px] text-text-muted font-mono">{formatCurrency(txn.closingBalance)}</span>
             </div>
           </div>
         )) : (

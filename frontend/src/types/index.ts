@@ -1,13 +1,11 @@
 // ===================== USER TYPES =====================
 export type UserRole = 'SUPER_ADMIN' | 'STATE_HEAD' | 'MASTER_DISTRIBUTOR' | 'DISTRIBUTOR' | 'RETAILER';
-export type KycStatus = 'PENDING' | 'SUBMITTED' | 'APPROVED' | 'REJECTED';
 export type TxnType = 'CREDIT' | 'DEBIT';
 export type WalletReason = 'RECHARGE' | 'COMMISSION' | 'TOPUP' | 'WITHDRAWAL' | 'REVERSAL' | 'MANUAL_ADJUSTMENT';
 export type ServiceType = 'MOBILE' | 'DTH' | 'ELECTRICITY' | 'GAS' | 'WATER';
 export type RechargeStatus = 'PENDING' | 'SUCCESS' | 'FAILED' | 'REFUNDED';
 export type WithdrawalStatus = 'PENDING' | 'PROCESSING' | 'PAID' | 'REJECTED';
 export type CommissionType = 'PERCENTAGE' | 'FLAT';
-export type DocType = 'AADHAAR_FRONT' | 'AADHAAR_BACK' | 'PAN' | 'GST' | 'SELFIE' | 'CANCELLED_CHEQUE';
 export type TopupStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
 
 export interface User {
@@ -18,9 +16,10 @@ export interface User {
   role: UserRole;
   parentId: string | null;
   walletBalance: string;
-  kycStatus: KycStatus;
+  commissionWalletBalance?: string; // Read-only lifetime earnings counter
   isActive: boolean;
   requiresPasswordChange: boolean;
+  upiId?: string | null;
   createdAt: string;
   updatedAt?: string;
 }
@@ -93,16 +92,6 @@ export interface WithdrawalRequest {
   requestedAt: string;
   processedAt: string | null;
   rejectionReason: string | null;
-}
-
-export interface KycDocument {
-  id: string;
-  userId: string;
-  docType: DocType;
-  fileUrl: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  rejectionReason: string | null;
-  createdAt: string;
 }
 
 export interface TopupRequest {

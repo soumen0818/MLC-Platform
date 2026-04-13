@@ -9,68 +9,15 @@ import { WalletService } from './wallet.service';
 const log = (msg: string) => console.log(`[RechargePoller ${new Date().toISOString()}] ${msg}`);
 
 /**
- * Polls Setu for the status of PENDING recharge transactions.
+ * Polls BharatPays for the status of PENDING recharge transactions.
  * Runs every 5 minutes. Safe to run concurrently — uses idempotency checks.
  */
 export class RechargePollerService {
   private static isRunning = false;
 
   /**
-   * Check one PENDING transaction against Setu's status enquiry API
-   */
-  private static async enquireStatus(apiTxnId: string, bearerToken: string): Promise<'SUCCESS' | 'FAILED' | 'PENDING'> {
-    const apiUrl = process.env.RECHARGE_API_URL;
-    const clientId = process.env.RECHARGE_API_KEY;
-
-    if (!apiUrl || !clientId) return 'PENDING'; // In demo mode, nothing to poll
-
-    try {
-      const res = await fetch(`${apiUrl}/api/v2/biller-payments/bbps/recharge/${apiTxnId}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${bearerToken}`,
-          'X-Setu-Product-Instance-ID': clientId,
-        },
-      });
-
-      const data: any = await res.json();
-      const status = data?.payment?.status || data?.status;
-
-      if (status === 'SUCCESS') return 'SUCCESS';
-      if (status === 'FAILED' || status === 'REFUND') return 'FAILED';
-      return 'PENDING';
-    } catch {
-      return 'PENDING'; // Network error — be conservative
-    }
-  }
-
-  /**
-   * Get a fresh Setu bearer token
-   */
-  private static async getSetuToken(): Promise<string | null> {
-    const apiUrl = process.env.RECHARGE_API_URL;
-    const clientId = process.env.RECHARGE_API_KEY;
-    const clientSecret = process.env.RECHARGE_CLIENT_SECRET;
-
-    if (!apiUrl || !clientId || !clientSecret) return null; // Demo mode
-
-    try {
-      const res = await fetch(`${apiUrl}/auth/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientID: clientId, secret: clientSecret }),
-      });
-
-      const data: any = await res.json();
-      return data?.data?.token || null;
-    } catch {
-      return null;
-    }
-  }
-
-  /**
    * Main poll cycle — finds all PENDING txns older than 2 minutes (to avoid race with live requests)
-   * and resolves them atomically.
+   * and resolves them atomically using BharatPays status-check API.
    */
   static async runPollCycle(): Promise<void> {
     if (RechargePollerService.isRunning) {
@@ -83,7 +30,7 @@ export class RechargePollerService {
     let skipped = 0;
 
     try {
-      // Find PENDING transactions that have a real Setu txn ID and are at least 2 minutes old
+      // Find PENDING transactions that are at least 2 minutes old
       const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000);
 
       const pendingTxns = await db
@@ -103,74 +50,73 @@ export class RechargePollerService {
 
       log(`Found ${pendingTxns.length} pending transaction(s) to resolve.`);
 
-      // Separate real Setu txns from demo mode txns
-      const setuTxns = pendingTxns.filter(t => t.apiTxnId && !t.apiTxnId.startsWith('DEMO-'));
-      const demoTxns = pendingTxns.filter(t => !t.apiTxnId || t.apiTxnId.startsWith('DEMO-'));
+      // Separate real BharatPays txns from legacy/orphaned demo txns
+      const realTxns = pendingTxns.filter(t => t.apiTxnId && !t.apiTxnId.startsWith('DEMO-'));
+      const orphanedTxns = pendingTxns.filter(t => !t.apiTxnId || t.apiTxnId.startsWith('DEMO-'));
 
-      // Auto-resolve demo-mode PENDING transactions as SUCCESS (for testing)
-      for (const txn of demoTxns) {
-        try {
-          await db.transaction(async (dbTx) => {
-            await dbTx
-              .update(rechargeTransactions)
-              .set({ status: 'SUCCESS', updatedAt: new Date() })
-              .where(eq(rechargeTransactions.id, txn.id));
-
-            await CommissionService.distributeCommissions(
-              txn.id,
-              txn.retailerId,
-              parseFloat(txn.amount),
-              txn.serviceType,
-              dbTx
-            );
-          });
-          resolved++;
-          log(`[DEMO] Resolved pending txn ${txn.id} → SUCCESS`);
-        } catch (err: any) {
-          log(`[DEMO] Failed to resolve ${txn.id}: ${err.message}`);
+      // Warn about any orphaned transactions (should not exist in production)
+      if (orphanedTxns.length > 0) {
+        log(`⚠️ Found ${orphanedTxns.length} orphaned/demo transaction(s) with no valid API txn ID. These require manual review.`);
+        for (const txn of orphanedTxns) {
+          log(`  → Orphaned txn ${txn.id} (apiTxnId: ${txn.apiTxnId || 'null'}) — skipping auto-resolve`);
+          skipped++;
         }
       }
 
-      // For real Setu transactions, get a token and enquire
-      if (setuTxns.length > 0) {
-        const token = await RechargePollerService.getSetuToken();
+      // For real BharatPays transactions, use the status-check API
+      if (realTxns.length > 0) {
+        const apiToken = process.env.BHARATPAYS_API_TOKEN;
 
-        if (!token) {
-          log('Could not obtain Setu auth token — skipping real transactions.');
-          skipped = setuTxns.length;
+        if (!apiToken) {
+          log('No BHARATPAYS_API_TOKEN set — skipping real transaction polling.');
+          skipped = realTxns.length;
         } else {
-          for (const txn of setuTxns) {
+          for (const txn of realTxns) {
             try {
-              const enquiredStatus = await RechargePollerService.enquireStatus(txn.apiTxnId!, token);
+              // Format the recharge date as YYYY-MM-DD
+              const rechargeDate = txn.createdAt.toISOString().split('T')[0];
 
-              if (enquiredStatus === 'PENDING') {
+              // Use our DB txn ID as reference_id (that's what we sent to BharatPays)
+              const statusResult = await RechargeService.checkStatus(txn.id, rechargeDate);
+
+              if (statusResult.status === 'PENDING') {
                 skipped++;
                 continue; // Still processing — check next cycle
               }
 
-              if (enquiredStatus === 'SUCCESS') {
+              if (statusResult.status === 'SUCCESS') {
                 await db.transaction(async (dbTx) => {
                   await dbTx
                     .update(rechargeTransactions)
-                    .set({ status: 'SUCCESS', updatedAt: new Date() })
+                    .set({
+                      status: 'SUCCESS',
+                      apiTxnId: statusResult.txnId || txn.apiTxnId,
+                      apiResponseRaw: statusResult.raw || txn.apiResponseRaw,
+                      updatedAt: new Date(),
+                    })
                     .where(eq(rechargeTransactions.id, txn.id));
 
                   await CommissionService.distributeCommissions(
                     txn.id,
                     txn.retailerId,
                     parseFloat(txn.amount),
-                    txn.serviceType,
+                    txn.operator,
                     dbTx
                   );
                 });
                 resolved++;
-                log(`Resolved txn ${txn.id} (${txn.apiTxnId}) → SUCCESS, commissions distributed`);
+                log(`Resolved txn ${txn.id} → SUCCESS (via status-check), commissions distributed`);
 
-              } else if (enquiredStatus === 'FAILED') {
+              } else if (statusResult.status === 'FAILED') {
                 await db.transaction(async (dbTx) => {
                   await dbTx
                     .update(rechargeTransactions)
-                    .set({ status: 'FAILED', failureReason: 'Confirmed FAILED via status enquiry', updatedAt: new Date() })
+                    .set({
+                      status: 'FAILED',
+                      failureReason: statusResult.reason || 'Confirmed FAILED via BharatPays status-check',
+                      apiResponseRaw: statusResult.raw || txn.apiResponseRaw,
+                      updatedAt: new Date(),
+                    })
                     .where(eq(rechargeTransactions.id, txn.id));
 
                   // Refund the retailer
@@ -179,15 +125,15 @@ export class RechargePollerService {
                     parseFloat(txn.amount),
                     'REVERSAL',
                     txn.id,
-                    'Refund — recharge confirmed failed via status enquiry',
+                    'Refund — recharge confirmed failed via status-check',
                     dbTx,
-                    'MAIN' // Refunds always go to main wallet
+                    'MAIN'
                   );
 
                   await CommissionService.reverseCommissions(txn.id, dbTx);
                 });
                 resolved++;
-                log(`Resolved txn ${txn.id} (${txn.apiTxnId}) → FAILED, retailer refunded`);
+                log(`Resolved txn ${txn.id} → FAILED (via status-check), retailer refunded`);
               }
             } catch (err: any) {
               log(`Error resolving txn ${txn.id}: ${err.message}`);
@@ -208,7 +154,7 @@ export class RechargePollerService {
    * Start the background cron job — runs every 5 minutes
    */
   static start(): void {
-    log('Starting recharge status poller (every 5 minutes)...');
+    log('Starting BharatPays recharge status poller (every 5 minutes)...');
 
     // Run immediately on startup to catch any leftover pending from previous sessions
     RechargePollerService.runPollCycle();

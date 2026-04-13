@@ -40,7 +40,6 @@ async function seed() {
         passwordHash,
         role: 'SUPER_ADMIN',
         isActive: true,
-        kycStatus: 'APPROVED',
         requiresPasswordChange: true,
       });
       console.log('✅ Super Admin created.');
@@ -51,26 +50,18 @@ async function seed() {
       console.log('ℹ️ Super Admin already exists.');
     }
 
-    // Default Commission Configs (Demo purposes)
-    const services = ['MOBILE', 'DTH', 'ELECTRICITY'];
-    const roles = ['STATE_HEAD', 'MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER'];
-    
-    // Check if configs exist
-    const configs = await db.select().from(schema.commissionConfigs);
-    if (configs.length === 0) {
-      console.log('⚙️ Adding default commission configs...');
-      for (const service of services) {
-        for (const role of roles) {
-          await db.insert(schema.commissionConfigs).values({
-            serviceType: service,
-            role: role as any,
-            commissionType: 'PERCENTAGE',
-            commissionValue: role === 'RETAILER' ? '2.00' : role === 'DISTRIBUTOR' ? '0.50' : role === 'MASTER_DISTRIBUTOR' ? '0.30' : '0.20',
-          });
-        }
-      }
-      console.log('✅ Default commission configs added.');
+    // Seed default services
+    const currentServices = await db.select().from(schema.services);
+    if (currentServices.length === 0) {
+      await db.insert(schema.services).values([
+        { name: 'Prepaid Mobile', serviceType: 'MOBILE', isActive: true, apiEndpoint: 'bharatpays' },
+        { name: 'DTH Service', serviceType: 'DTH', isActive: true, apiEndpoint: 'bharatpays' },
+      ]);
+      console.log('✅ Default API Services created.');
+    } else {
+      console.log('ℹ️ Services already seeded.');
     }
+
 
     console.log('🎉 Seeding complete!');
     process.exit(0);

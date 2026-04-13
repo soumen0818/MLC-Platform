@@ -25,7 +25,7 @@ const createUserSchema = z.object({
 // GET /api/users — list users (filtered by role/hierarchy)
 router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { role, status, kycStatus, page = '1', limit = '20', search } = req.query;
+    const { role, status, page = '1', limit = '20', search } = req.query;
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
     const offset = (pageNum - 1) * limitNum;
@@ -38,7 +38,8 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
       role: users.role,
       parentId: users.parentId,
       walletBalance: users.walletBalance,
-      kycStatus: users.kycStatus,
+      commissionWalletBalance: users.commissionWalletBalance,
+      upiId: users.upiId,
       isActive: users.isActive,
       createdAt: users.createdAt,
     }).from(users);
@@ -53,7 +54,6 @@ router.get('/', async (req: AuthRequest, res: Response): Promise<void> => {
     if (role) conditions.push(eq(users.role, role as any));
     if (status === 'active') conditions.push(eq(users.isActive, true));
     if (status === 'inactive') conditions.push(eq(users.isActive, false));
-    if (kycStatus) conditions.push(eq(users.kycStatus, kycStatus as any));
 
     if (conditions.length > 0) {
       query = query.where(and(...conditions)) as any;
@@ -117,8 +117,7 @@ router.post('/', creationHierarchyMiddleware, async (req: AuthRequest, res: Resp
         passwordHash,
         role: body.role,
         parentId,
-        isActive: false, // Wait for user to accept via password change
-        kycStatus: 'PENDING',
+        isActive: false,
         requiresPasswordChange: true,
         createdBy: req.user!.userId,
       })
@@ -169,8 +168,9 @@ router.get('/:userId', async (req: AuthRequest, res: Response): Promise<void> =>
         phone: users.phone,
         role: users.role,
         parentId: users.parentId,
+        upiId: users.upiId,
         walletBalance: users.walletBalance,
-        kycStatus: users.kycStatus,
+        commissionWalletBalance: users.commissionWalletBalance,
         isActive: users.isActive,
         createdAt: users.createdAt,
         updatedAt: users.updatedAt,
@@ -187,7 +187,8 @@ router.get('/:userId', async (req: AuthRequest, res: Response): Promise<void> =>
     if (
       req.user!.role !== 'SUPER_ADMIN' &&
       user.id !== req.user!.userId &&
-      user.parentId !== req.user!.userId
+      user.parentId !== req.user!.userId &&
+      req.user!.parentId !== user.id // child viewing parent
     ) {
       res.status(403).json({ error: 'Access denied' });
       return;
@@ -235,7 +236,7 @@ router.patch('/:userId/activate', async (req: AuthRequest, res: Response): Promi
 router.patch('/:userId/profile', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { userId } = req.params as { [key: string]: string };
-    const { name, phone } = req.body;
+    const { name, phone, upiId } = req.body;
 
     if (userId !== req.user!.userId && req.user!.role !== 'SUPER_ADMIN') {
       res.status(403).json({ error: 'Access denied' });
@@ -247,6 +248,7 @@ router.patch('/:userId/profile', async (req: AuthRequest, res: Response): Promis
       .set({ 
         name: name || null, 
         phone: phone || null, 
+        upiId: upiId || null,
         updatedAt: new Date() 
       })
       .where(eq(users.id, userId));
@@ -277,7 +279,7 @@ router.get('/:userId/children', async (req: AuthRequest, res: Response): Promise
         phone: users.phone,
         role: users.role,
         walletBalance: users.walletBalance,
-        kycStatus: users.kycStatus,
+        commissionWalletBalance: users.commissionWalletBalance,
         isActive: users.isActive,
         createdAt: users.createdAt,
       })
@@ -293,3 +295,4 @@ router.get('/:userId/children', async (req: AuthRequest, res: Response): Promise
 });
 
 export default router;
+// force reload

@@ -1,6 +1,6 @@
 import { db } from '../db';
 import { users, walletTransactions } from '../db/schema';
-import { eq, desc, and, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, sql, desc } from 'drizzle-orm';
 
 type WalletReason = 'RECHARGE' | 'COMMISSION' | 'TOPUP' | 'WITHDRAWAL' | 'REVERSAL' | 'MANUAL_ADJUSTMENT';
 type WalletType = 'MAIN' | 'COMMISSION';
@@ -28,17 +28,20 @@ export class WalletService {
     let newBalance: string;
 
     if (walletType === 'COMMISSION') {
+      // Commission: credit MAIN wallet (spendable & withdrawable) AND
+      // increment commissionWalletBalance as a lifetime earnings counter only.
       const returned = await tx
         .update(users)
         .set({
+          walletBalance: sql`${users.walletBalance} + ${amount}`,
           commissionWalletBalance: sql`${users.commissionWalletBalance} + ${amount}`,
           updatedAt: new Date(),
         })
         .where(eq(users.id, userId))
-        .returning({ commissionWalletBalance: users.commissionWalletBalance });
+        .returning({ walletBalance: users.walletBalance });
 
       if (!returned || returned.length === 0) throw new Error('User not found');
-      newBalance = returned[0].commissionWalletBalance;
+      newBalance = returned[0].walletBalance;
     } else {
       const returned = await tx
         .update(users)
@@ -58,7 +61,7 @@ export class WalletService {
       .values({
         userId,
         type: 'CREDIT',
-        walletType,
+        walletType: walletType === 'COMMISSION' ? 'COMMISSION' : 'MAIN', // tag for ledger display
         amount: amount.toFixed(2),
         closingBalance: newBalance,
         reason,
@@ -70,10 +73,11 @@ export class WalletService {
     return { success: true, newBalance, txnId: txn.id };
   }
 
+
   /**
    * Debit a wallet.
-   * For RECHARGE reason: drains commissionWalletBalance first, then falls back to walletBalance.
-   * For all other reasons: only debits walletBalance (MAIN).
+   * Always debits from MAIN wallet only.
+   * Commission wallet is a read-only lifetime counter — never debited.
    */
   static async debitWallet(
     userId: string,
@@ -85,93 +89,7 @@ export class WalletService {
   ): Promise<{ success: boolean; newBalance: string; txnId: string }> {
     if (amount <= 0) throw new Error('Amount must be positive');
 
-    if (reason === 'RECHARGE') {
-      // Drain commission wallet first, then fall back to main wallet
-      const [userRow] = await tx
-        .select({
-          walletBalance: users.walletBalance,
-          commissionWalletBalance: users.commissionWalletBalance,
-        })
-        .from(users)
-        .where(eq(users.id, userId));
-
-      if (!userRow) throw new Error('User not found');
-
-      const commissionBal = parseFloat(userRow.commissionWalletBalance);
-      const mainBal = parseFloat(userRow.walletBalance);
-      const totalBal = commissionBal + mainBal;
-
-      if (totalBal < amount) throw new Error('Insufficient wallet balance');
-
-      // Calculate how much to take from each wallet
-      const fromCommission = Math.min(commissionBal, amount);
-      const fromMain = amount - fromCommission;
-
-      let finalMainBalance = userRow.walletBalance;
-      let finalCommissionBalance = userRow.commissionWalletBalance;
-
-      // Debit commission wallet portion
-      if (fromCommission > 0) {
-        const ret = await tx
-          .update(users)
-          .set({
-            commissionWalletBalance: sql`${users.commissionWalletBalance} - ${fromCommission}`,
-            updatedAt: new Date(),
-          })
-          .where(eq(users.id, userId))
-          .returning({ commissionWalletBalance: users.commissionWalletBalance });
-        finalCommissionBalance = ret[0].commissionWalletBalance;
-
-        await tx.insert(walletTransactions).values({
-          userId,
-          type: 'DEBIT',
-          walletType: 'COMMISSION',
-          amount: fromCommission.toFixed(2),
-          closingBalance: finalCommissionBalance,
-          reason,
-          refId: refId || null,
-          note: note ? `${note} (commission portion)` : 'Commission wallet used for recharge',
-        });
-      }
-
-      // Debit main wallet remainder
-      if (fromMain > 0) {
-        const ret = await tx
-          .update(users)
-          .set({
-            walletBalance: sql`${users.walletBalance} - ${fromMain}`,
-            updatedAt: new Date(),
-          })
-          .where(and(eq(users.id, userId), gte(users.walletBalance, fromMain.toFixed(2))))
-          .returning({ walletBalance: users.walletBalance });
-
-        if (!ret || ret.length === 0) throw new Error('Insufficient main wallet balance');
-        finalMainBalance = ret[0].walletBalance;
-
-        await tx.insert(walletTransactions).values({
-          userId,
-          type: 'DEBIT',
-          walletType: 'MAIN',
-          amount: fromMain.toFixed(2),
-          closingBalance: finalMainBalance,
-          reason,
-          refId: refId || null,
-          note: note ? `${note} (main wallet portion)` : null,
-        });
-      }
-
-      // Return a synthetic txnId (the last ledger entry id)
-      const [lastTxn] = await tx
-        .select({ id: walletTransactions.id })
-        .from(walletTransactions)
-        .where(eq(walletTransactions.userId, userId))
-        .orderBy(desc(walletTransactions.createdAt))
-        .limit(1);
-
-      return { success: true, newBalance: finalMainBalance, txnId: lastTxn?.id || '' };
-    }
-
-    // All other reasons (WITHDRAWAL, TOPUP, MANUAL_ADJUSTMENT, REVERSAL) — only debit MAIN wallet
+    // Always debit from MAIN wallet only for all reasons
     const returned = await tx
       .update(users)
       .set({
@@ -225,13 +143,13 @@ export class WalletService {
 
     if (!user) throw new Error('User not found');
 
-    const main = parseFloat(user.walletBalance);
-    const commission = parseFloat(user.commissionWalletBalance);
-
+    // commissionWalletBalance is a read-only lifetime earnings counter.
+    // Commission credits land directly in walletBalance (MAIN), so
+    // totalBalance == mainBalance (no separate commission pot to add).
     return {
       mainBalance: user.walletBalance,
-      commissionBalance: user.commissionWalletBalance,
-      totalBalance: (main + commission).toFixed(2),
+      commissionBalance: user.commissionWalletBalance,  // display-only counter
+      totalBalance: user.walletBalance,                  // same as main
     };
   }
 

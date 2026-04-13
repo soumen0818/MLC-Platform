@@ -13,7 +13,6 @@ import rechargeRoutes from './routes/recharge.routes';
 import commissionRoutes from './routes/commission.routes';
 import withdrawalRoutes from './routes/withdrawal.routes';
 import reportRoutes from './routes/report.routes';
-import kycRoutes from './routes/kyc.routes';
 import serviceRoutes from './routes/service.routes';
 import { RechargePollerService } from './services/recharge-poller.service';
 
@@ -71,7 +70,6 @@ app.use('/api/recharge', rechargeRoutes);
 app.use('/api/commission', commissionRoutes);
 app.use('/api/withdrawals', withdrawalRoutes);
 app.use('/api/reports', reportRoutes);
-app.use('/api/kyc', kycRoutes);
 app.use('/api/services', serviceRoutes);
 
 // 404 handler
@@ -98,3 +96,4 @@ app.listen(PORT, () => {
 });
 
 export default app;
+// Force restart to load updated Drizzle ORM schema fields!

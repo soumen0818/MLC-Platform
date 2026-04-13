@@ -43,7 +43,7 @@ export class NotificationService {
             <p style="margin: 10px 0 0;"><strong>Temporary Password:</strong> <code style="background: #E8EDF5; padding: 4px 8px; border-radius: 4px;">${tempPassword}</code></p>
           </div>
           <p style="color: #FF4757;"><strong>Important:</strong> You must change your password on first login.</p>
-          <p>Please complete your KYC verification to activate your account.</p>
+          <p>Your account will be activated once your parent confirms the setup.</p>
         </div>
       </div>
     `;

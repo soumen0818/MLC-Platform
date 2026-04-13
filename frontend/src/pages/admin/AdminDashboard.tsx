@@ -7,20 +7,23 @@ import { useNavigate } from 'react-router-dom';
 import { Users, TrendingUp, Smartphone, AlertCircle, ArrowUpRight, ArrowDownRight, Activity, Inbox, Wallet, Server } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
-const rechargeData: any[] = [];
-
 export default function AdminDashboard() {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const [stats, setStats] = useState<any>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { fetchStats(); }, []);
+  useEffect(() => { fetchDashboardData(); }, []);
 
-  const fetchStats = async () => {
+  const fetchDashboardData = async () => {
     try {
-      const { data } = await api.get('/reports/dashboard-stats');
-      setStats(data);
+      const [statsRes, txRes] = await Promise.all([
+        api.get('/reports/dashboard-stats'),
+        api.get('/wallet/transactions?limit=5')
+      ]);
+      setStats(statsRes.data);
+      setTransactions(txRes.data.transactions || []);
     } catch {
       setStats({
         totalUsers: 0, activeUsers: 0, todayRecharges: 0,
@@ -29,6 +32,15 @@ export default function AdminDashboard() {
     } finally { setLoading(false); }
   };
 
+  // Charts will populate once recharge transactions accumulate
+  // For now show today's data as a single data point if available
+  const todayAmount = parseFloat(stats?.todayRechargeAmount || '0');
+  const todayComm = parseFloat(stats?.todayCommissionsPaid || '0');
+  const hasChartData = todayAmount > 0 || todayComm > 0;
+  const rechargeData = hasChartData ? [
+    { name: 'Today', commissions: todayComm, amount: todayAmount },
+  ] : [];
+
   if (loading) return <LoadingSpinner fullScreen />;
 
   let kpiCards = [];
@@ -36,18 +48,18 @@ export default function AdminDashboard() {
   if (user?.role === 'SUPER_ADMIN') {
     kpiCards = [
       { 
-        title: 'API Provider Sandbox', 
-        value: 'Simulated', 
-        subtitle: 'Dev mode active', 
+        title: 'Recharge Provider', 
+        value: 'BharatPays', 
+        subtitle: 'BBPS Production API', 
         icon: <Server size={22} />, 
-        iconColor: 'bg-primary text-black', 
-        trend: 'Demo Mode', 
+        iconColor: 'bg-emerald-50 text-emerald-600', 
+        trend: 'Live', 
         trendUp: true 
       },
       { 
         title: 'Platform Liquidity', 
         value: formatCurrency(stats?.platformLiquidity || 0), 
-        subtitle: 'Total Wallets Sum', 
+        subtitle: 'Total network wallet sum', 
         icon: <Wallet size={22} />, 
         iconColor: 'bg-blue-50 text-blue-600', 
         trend: 'Live', 
@@ -56,16 +68,16 @@ export default function AdminDashboard() {
       { 
         title: "Today's Recharges", 
         value: stats?.todayRecharges?.toLocaleString() || '0', 
-        subtitle: `${formatCurrency(stats?.todayRechargeAmount || '0')} · Successful only`, 
+        subtitle: `${formatCurrency(stats?.todayRechargeAmount || '0')} volume`, 
         icon: <Smartphone size={22} />, 
-        iconColor: 'bg-emerald-50 text-emerald-600', 
-        trend: '0%', 
+        iconColor: 'bg-primary text-black', 
+        trend: `₹${parseFloat(stats?.todayCommissionsPaid || '0').toFixed(0)} comm.`, 
         trendUp: true 
       },
       { 
         title: 'Pending Withdrawals', 
         value: stats?.pendingWithdrawals?.toString() || '0', 
-        subtitle: 'Awaiting checks', 
+        subtitle: 'Awaiting processing', 
         icon: <AlertCircle size={22} />, 
         iconColor: 'bg-amber-50 text-amber-600', 
         trend: 'Queue', 
@@ -75,9 +87,9 @@ export default function AdminDashboard() {
   } else {
     kpiCards = [
       { title: 'Sub-Network Volume', value: formatCurrency(stats?.todayRechargeAmount || '0'), subtitle: "Today's downstream total", icon: <Activity size={22} />, iconColor: 'bg-primary text-black', trend: 'Active', trendUp: true },
-      { title: 'Commission Earnings', value: formatCurrency(stats?.todayCommissionsPaid || '0'), subtitle: 'Retained today', icon: <TrendingUp size={22} />, iconColor: 'bg-emerald-50 text-emerald-600', trend: '0%', trendUp: true },
-      { title: 'Total Children', value: stats?.totalUsers?.toLocaleString() || '0', subtitle: `${stats?.activeUsers || 0} active accounts`, icon: <Users size={22} />, iconColor: 'bg-blue-50 text-blue-600', trend: '0%', trendUp: true },
-      { title: 'Child Wallets Sum', value: formatCurrency(stats?.totalUsers ? 25000 : 0), subtitle: 'Funds distributed', icon: <Wallet size={22} />, iconColor: 'bg-border text-text-primary', trend: 'Tracked', trendUp: true },
+      { title: 'Commission Earnings', value: formatCurrency(stats?.todayCommission || stats?.todayCommissionsPaid || '0'), subtitle: 'Earned today', icon: <TrendingUp size={22} />, iconColor: 'bg-emerald-50 text-emerald-600', trend: 'Live', trendUp: true },
+      { title: 'Total Children', value: stats?.childrenCount?.toLocaleString() || stats?.totalUsers?.toLocaleString() || '0', subtitle: `${stats?.activeUsers || 0} active accounts`, icon: <Users size={22} />, iconColor: 'bg-blue-50 text-blue-600', trend: 'Network', trendUp: true },
+      { title: 'My Wallet', value: formatCurrency(user?.walletBalance || '0'), subtitle: 'Available balance', icon: <Wallet size={22} />, iconColor: 'bg-border text-text-primary', trend: 'Live', trendUp: true },
     ];
   }
 
@@ -190,13 +202,35 @@ export default function AdminDashboard() {
         <div className="card p-6 lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-[15px] font-semibold text-text-primary m-0">Recent Transactions</h3>
-            <button className="text-[12px] font-semibold text-text-secondary bg-background hover:bg-border px-3 py-1.5 rounded-lg transition-colors outline-none cursor-pointer border-none">
+            <button onClick={() => navigate('/admin/wallet')} className="text-[12px] font-semibold text-text-secondary bg-background hover:bg-border px-3 py-1.5 rounded-lg transition-colors outline-none cursor-pointer border-none">
               View All
             </button>
           </div>
-          <div className="flex flex-col items-center justify-center py-10 text-text-muted border border-dashed border-border rounded-xl bg-background-secondary/50">
-            <Inbox size={32} className="mb-2 opacity-50" />
-            <p className="text-[13px] font-medium m-0">No recent transactions found</p>
+          <div className="flex flex-col gap-1">
+            {transactions.length > 0 ? transactions.map((txn, i) => (
+              <div key={i} className={`flex items-center justify-between py-3 ${i < transactions.length - 1 ? 'border-b border-border' : ''}`}>
+                <div className="flex items-center gap-3">
+                  <div className="w-[38px] h-[38px] rounded-xl bg-background-secondary/50 flex items-center justify-center border border-border">
+                    {txn.type === 'CREDIT' ? <TrendingUp size={16} className="text-emerald-500" /> : <Wallet size={16} className="text-amber-500" />}
+                  </div>
+                  <div>
+                    <p className="text-[14px] font-semibold text-text-primary m-0 capitalize">{txn.reason?.replace(/_/g, ' ')}</p>
+                    <p className="text-[12px] text-text-secondary m-0">{new Date(txn.createdAt).toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className={`text-[15px] font-bold font-mono m-0 ${txn.type === 'CREDIT' ? 'text-emerald-500' : 'text-text-primary'}`}>
+                    {txn.type === 'CREDIT' ? '+' : '-'}{formatCurrency(txn.amount)}
+                  </p>
+                  <span className="text-[11px] text-text-muted font-mono">{formatCurrency(txn.closingBalance)} Balance</span>
+                </div>
+              </div>
+            )) : (
+              <div className="flex flex-col items-center justify-center py-10 text-text-muted border border-dashed border-border rounded-xl bg-background-secondary/50">
+                <Inbox size={32} className="mb-2 opacity-50" />
+                <p className="text-[13px] font-medium m-0">No recent transactions found</p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -223,10 +257,13 @@ export default function AdminDashboard() {
           {/* Network Health */}
           {user?.role === 'SUPER_ADMIN' && (
             <div className="mt-5 pt-5 border-t border-border">
-              <h4 className="text-[13px] font-semibold text-text-primary mb-2.5">System Health</h4>
-              <div className="flex flex-col py-3 px-4 text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl">
-                <p className="text-[13px] font-bold m-0 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"/> Provider API Online</p>
-                <p className="text-[11px] opacity-80 mt-0.5">Latency: 142ms</p>
+              <h4 className="text-[13px] font-semibold text-text-primary mb-2.5">Provider Status</h4>
+              <div className="flex flex-col py-3 px-4 text-emerald-700 bg-emerald-50 border border-emerald-100 rounded-xl relative overflow-hidden group">
+                <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-emerald-100 to-transparent flex items-center justify-end pr-4 opacity-50 group-hover:opacity-100 transition-opacity">
+                   <p className="text-[16px] font-mono font-bold">{formatCurrency(stats?.providerLiquidity || 0)}</p>
+                </div>
+                <p className="text-[13px] font-bold m-0 flex items-center gap-2"><div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"/> BharatPays BBPS</p>
+                <p className="text-[11px] opacity-80 mt-0.5">B2B Float Wallet Balance</p>
               </div>
             </div>
           )}

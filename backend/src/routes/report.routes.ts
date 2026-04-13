@@ -114,6 +114,39 @@ router.get('/dashboard-stats', async (req: AuthRequest, res: Response): Promise<
         .from(users)
         .where(sql`role != 'SUPER_ADMIN'`);
 
+      // Fetch live B2B Wallet Balance from BharatPays Provider
+      let providerBalance = '0.00';
+      try {
+        const apiToken = process.env.BHARATPAYS_API_TOKEN;
+        const username = process.env.BHARATPAYS_USERNAME;
+        if (apiToken && username) {
+          const url = `https://bbps.bharatpays.in/api-user/balance?username=${username}&api_token=${apiToken}`;
+          
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 5000); // 5-second timeout
+          
+          const res = await fetch(url, { 
+            method: 'GET', 
+            headers: { 'Accept': 'application/json' },
+            signal: controller.signal 
+          });
+          clearTimeout(timeout);
+          
+          if (res.ok) {
+             const data = await res.json() as any;
+             if (data && data.status === 'Ok' && data.totalBalance) {
+               providerBalance = parseFloat(data.totalBalance).toFixed(2);
+             } else {
+               console.warn('[Report] BharatPays balance warn:', data);
+             }
+          } else {
+             console.error(`[Report] BharatPays check failed: HTTP ${res.status}`);
+          }
+        }
+      } catch (err: any) {
+        console.error('[Report] Failed to fetch BharatPays provider balance:', err.name, err.message);
+      }
+
       res.json({
         totalUsers: userStats.totalUsers,
         activeUsers: userStats.activeUsers,
@@ -122,6 +155,7 @@ router.get('/dashboard-stats', async (req: AuthRequest, res: Response): Promise<
         todayCommissionsPaid: todayCommissions.totalPaid,
         pendingWithdrawals: pendingWithdrawals.count,
         platformLiquidity: walletPool.totalLiquidity,
+        providerLiquidity: providerBalance,
       });
     } else if (role === 'RETAILER') {
       // Retailer stats

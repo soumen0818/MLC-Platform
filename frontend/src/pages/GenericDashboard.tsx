@@ -1,12 +1,36 @@
+import { useState, useEffect } from 'react';
 import { useAuthStore } from '@/stores/authStore';
 import { formatCurrency } from '@/lib/utils';
 import { LoadingSpinner, StatusPill } from '@/components/ui';
 import { Wallet, TrendingUp, ArrowUpRight, CreditCard, Send, Network, Inbox } from 'lucide-react';
 import { ROLE_LABELS } from '@/types';
+import api from '@/lib/api';
 
 export default function GenericDashboard() {
   const { user } = useAuthStore();
-  if (!user) return <LoadingSpinner fullScreen />;
+  const [stats, setStats] = useState<any>(null);
+  const [children, setChildren] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [statsRes, kidsRes] = await Promise.all([
+          api.get('/reports/dashboard-stats'),
+          api.get('/users?limit=5')
+        ]);
+        setStats(statsRes.data);
+        setChildren(kidsRes.data?.users || []);
+      } catch (err) {
+        console.error('Failed to load generic dashboard data', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
+
+  if (!user || loading) return <LoadingSpinner fullScreen />;
 
   const roleMap: Record<string, string> = {
     STATE_HEAD: 'Master Distributors',
@@ -15,7 +39,6 @@ export default function GenericDashboard() {
   };
   const childRoleLabel = roleMap[user.role] || 'Children';
 
-  const children: any[] = []; // Removed dummy data
 
   return (
     <div className="flex flex-col gap-6 font-sans">
@@ -33,7 +56,7 @@ export default function GenericDashboard() {
               <span className="text-[12px] text-white/70 font-semibold uppercase tracking-[0.08em]">Wallet Balance</span>
             </div>
             <p className="text-[36px] font-bold text-white m-0 font-mono tracking-tight">
-              {formatCurrency(user.walletBalance)}
+              {formatCurrency(stats?.walletBalance || user.walletBalance)}
             </p>
           </div>
           <div className="flex gap-2.5 flex-wrap">
@@ -57,8 +80,8 @@ export default function GenericDashboard() {
             </div>
             <span className="text-[13px] text-text-secondary">My {childRoleLabel}</span>
           </div>
-          <p className="text-[22px] font-bold text-text-primary m-0 font-mono">0</p>
-          <p className="text-[11px] text-text-muted mt-1">0 active</p>
+          <p className="text-[22px] font-bold text-text-primary m-0 font-mono">{stats?.childrenCount || 0}</p>
+          <p className="text-[11px] text-text-muted mt-1">{stats?.childrenCount || 0} active</p>
         </div>
         
         <div className="card p-5">
@@ -68,8 +91,8 @@ export default function GenericDashboard() {
             </div>
             <span className="text-[13px] text-text-secondary">Commission Today</span>
           </div>
-          <p className="text-[22px] font-bold text-emerald-500 m-0 font-mono">{formatCurrency('0.00')}</p>
-          <p className="text-[11px] text-text-muted mt-1">This month: {formatCurrency('0.00')}</p>
+          <p className="text-[22px] font-bold text-emerald-500 m-0 font-mono">{formatCurrency(stats?.todayCommission || '0.00')}</p>
+          <p className="text-[11px] text-text-muted mt-1">Today's total earrings</p>
         </div>
         
         <div className="card p-5">
@@ -77,7 +100,7 @@ export default function GenericDashboard() {
             <div className="w-[38px] h-[38px] rounded-xl bg-emerald-50 flex items-center justify-center">
               <CreditCard size={18} className="text-emerald-600" />
             </div>
-            <span className="text-[13px] text-text-secondary">Total Transferred</span>
+            <span className="text-[13px] text-text-secondary">Total Processed</span>
           </div>
           <p className="text-[22px] font-bold text-text-primary m-0 font-mono">{formatCurrency('0.00')}</p>
           <p className="text-[11px] text-text-muted mt-1">This month</p>
@@ -99,12 +122,12 @@ export default function GenericDashboard() {
               </div>
               <div>
                 <p className="text-[13px] font-medium text-text-primary m-0">{child.name || child.email || 'Unknown User'}</p>
-                <p className="text-[11px] text-text-muted m-0">{child.recharges} recharges this month</p>
+                <p className="text-[11px] text-text-muted m-0">{child.role?.replace(/_/g, ' ')}</p>
               </div>
             </div>
             <div className="flex items-center gap-2.5">
-              <span className="text-[13px] font-bold font-mono text-text-primary">{formatCurrency(child.balance)}</span>
-              <StatusPill status={child.status ? 'ACTIVE' : 'INACTIVE'} />
+              <span className="text-[13px] font-bold font-mono text-text-primary">{formatCurrency(child.walletBalance)}</span>
+              <StatusPill status={child.isActive ? 'ACTIVE' : 'INACTIVE'} />
             </div>
           </div>
         )) : (

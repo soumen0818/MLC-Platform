@@ -82,7 +82,7 @@ export default function WalletStatement() {
             <p className="text-[30px] font-bold text-text-primary font-mono leading-none">
               {loading ? <span className="text-text-muted text-[20px]">Loading...</span> : fmt(balances?.mainBalance || 0)}
             </p>
-            <p className="text-[11px] text-text-muted mt-2">From bank top-ups · Withdrawable · Transferable</p>
+            <p className="text-[11px] text-text-muted mt-2">From bank top-ups & commissions · Withdrawable · Transferable</p>
           </div>
         </div>
 
@@ -93,31 +93,31 @@ export default function WalletStatement() {
               <TrendingUp size={16} style={{ color: '#CCFF00' }} />
             </div>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full border" style={{ color: '#CCFF00', borderColor: 'rgba(204,255,0,0.5)', background: 'rgba(204,255,0,0.1)' }}>
-              LOCKED
+              LIFETIME EARNED
             </span>
           </div>
           <div>
-            <span className="text-[12px] font-bold uppercase tracking-wider block mb-1" style={{ color: '#CCFF00' }}>Commission Wallet</span>
+            <span className="text-[12px] font-bold uppercase tracking-wider block mb-1" style={{ color: '#CCFF00' }}>Commission Earned</span>
             <p className="text-[30px] font-bold font-mono leading-none" style={{ color: '#CCFF00' }}>
               {loading ? <span style={{ color: 'rgba(204,255,0,0.5)', fontSize: '20px' }}>Loading...</span> : fmt(balances?.commissionBalance || 0)}
             </p>
-            <p className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>Earned from recharges · Auto-used for recharges</p>
+            <p className="text-[11px] mt-2" style={{ color: 'rgba(255,255,255,0.6)' }}>Total commissions earned · Added directly to Main Wallet</p>
           </div>
         </div>
 
-        {/* Total */}
+        {/* Total / Spendable */}
         <div className="rounded-2xl border-2 border-border bg-background p-6 flex flex-col gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-background border border-border flex items-center justify-center">
               <Layers size={16} className="text-text-secondary" />
             </div>
-            <span className="text-[12px] font-bold text-text-secondary uppercase tracking-wider">Total Available</span>
+            <span className="text-[12px] font-bold text-text-secondary uppercase tracking-wider">Spendable Balance</span>
           </div>
           <div>
             <p className="text-[30px] font-bold text-text-primary font-mono leading-none">
               {loading ? <span className="text-text-muted text-[20px]">Loading...</span> : fmt(balances?.totalBalance || 0)}
             </p>
-            <p className="text-[11px] text-text-muted mt-2">Commission funds drain first on every recharge</p>
+            <p className="text-[11px] text-text-muted mt-2">Available for recharge, transfer & withdrawal</p>
           </div>
         </div>
       </div>

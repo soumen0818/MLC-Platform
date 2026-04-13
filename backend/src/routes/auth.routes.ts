@@ -37,16 +37,19 @@ const changePasswordSchema = z.object({
 
 // Generate JWT token
 function generateToken(user: any): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: JWT_SECRET is not configured. Cannot sign tokens.');
+  }
   return jwt.sign(
     {
       userId: user.id,
       role: user.role,
       parentId: user.parentId,
-      kycStatus: user.kycStatus,
       isActive: user.isActive,
       requiresPasswordChange: user.requiresPasswordChange,
     },
-    process.env.JWT_SECRET || 'fallback_secret_key',
+    secret,
     { expiresIn: (process.env.JWT_EXPIRY || '7d') as any }
   );
 }
@@ -85,7 +88,6 @@ router.post('/register-admin', async (req: Request, res: Response): Promise<void
         passwordHash,
         role: 'SUPER_ADMIN',
         isActive: true,
-        kycStatus: 'APPROVED',
         requiresPasswordChange: false,
       })
       .returning();
@@ -153,7 +155,6 @@ router.post('/login', async (req: Request, res: Response): Promise<void> => {
         email: user.email,
         phone: user.phone,
         role: user.role,
-        kycStatus: user.kycStatus,
         isActive: user.isActive,
         requiresPasswordChange: user.requiresPasswordChange,
         walletBalance: user.walletBalance,
@@ -231,9 +232,11 @@ router.get('/me', authMiddleware, async (req: AuthRequest, res: Response): Promi
         email: users.email,
         phone: users.phone,
         role: users.role,
-        kycStatus: users.kycStatus,
         isActive: users.isActive,
+        upiId: users.upiId,
+        parentId: users.parentId,
         walletBalance: users.walletBalance,
+        commissionWalletBalance: users.commissionWalletBalance,
         requiresPasswordChange: users.requiresPasswordChange,
         createdAt: users.createdAt,
       })

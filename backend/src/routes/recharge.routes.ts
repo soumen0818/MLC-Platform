@@ -1,4 +1,4 @@
-import { Router, Response } from 'express';
+import { Router, Request, Response } from 'express';
 import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { roleMiddleware } from '../middleware/role.middleware';
 import { RechargeService } from '../services/recharge.service';
@@ -143,18 +143,42 @@ router.get(
   }
 );
 
-// POST /api/recharge/webhook — callback from recharge API provider
-router.post('/webhook', async (req: any, res: Response): Promise<void> => {
+/**
+ * GET /api/recharge/callback — BharatPays Recharge Callback URL
+ * 
+ * BharatPays sends callbacks as GET requests with query parameters:
+ * ?number=[RECHARGE_NUMBER]&amount=[AMOUNT]&txnId=[OUR_UNIQUE_ID]&refId=[YOUR_UNIQUE_ID]
+ *  &status=[Success/Failure/Refunded]&operatorId=[OPERATOR'S_UNIQUE_ID]
+ *  &operatorCode=[OPERATOR_CODE]&balance=[YOUR_BALANCE]
+ * 
+ * This endpoint is PUBLIC (no auth) — BharatPays server calls it directly.
+ */
+router.get('/callback', async (req: Request, res: Response): Promise<void> => {
   try {
-    // TODO: Verify HMAC signature from provider
-    const { txn_id, status, reason } = req.body;
+    const { number, amount, txnId, refId, status, operatorId, operatorCode, balance } = req.query;
 
-    const mappedStatus = status === 'success' || status === 1 ? 'SUCCESS' : 'FAILED';
-    await RechargeService.handleWebhook(txn_id, mappedStatus, reason);
+    console.log(`[BharatPays Callback] Received: refId=${refId}, txnId=${txnId}, status=${status}, number=${number}, amount=${amount}`);
 
-    res.json({ received: true });
+    if (!refId || !status) {
+      res.status(400).json({ error: 'Missing required callback parameters (refId, status)' });
+      return;
+    }
+
+    await RechargeService.handleCallback({
+      refId: refId as string,
+      txnId: txnId as string,
+      status: status as string,
+      number: number as string,
+      amount: amount as string,
+      operatorId: operatorId as string,
+      operatorCode: operatorCode as string,
+      balance: balance as string,
+    });
+
+    // BharatPays expects a simple acknowledgement
+    res.json({ received: true, message: 'Callback processed successfully' });
   } catch (error: any) {
-    console.error('Webhook error:', error);
+    console.error('[BharatPays Callback] Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
