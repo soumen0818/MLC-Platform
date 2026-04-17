@@ -56,6 +56,35 @@ export interface RechargeTransaction {
   createdAt: string;
 }
 
+export interface RechargeProviderDescriptor {
+  id: 'bharatpays' | 'setu';
+  name: string;
+  tag: string;
+  active: boolean;
+  supportsPlanLookup: boolean;
+  supportsServices: ServiceType[];
+  configured: boolean;
+  healthy?: boolean;
+  balance?: string | null;
+  balances?: {
+    total?: string | null;
+    trade?: string | null;
+    recharge?: string | null;
+  };
+  message?: string | null;
+  notes?: string[];
+}
+
+export interface RechargePlan {
+  id: string;
+  amount: string;
+  description: string;
+  categoryType?: string | null;
+  categorySubType?: string | null;
+  billerId?: string | null;
+  additionalInfo?: Array<{ label: string; value: string }>;
+}
+
 export interface CommissionDistribution {
   id: string;
   rechargeTxnId: string;
@@ -129,6 +158,12 @@ export interface DashboardStats {
   todayCommission?: string;
   pendingWithdrawals?: number;
   childrenCount?: number;
+  platformLiquidity?: string;
+  providerFundsTotal?: string | null;
+  providerTradeBalance?: string | null;
+  providerRechargeBalance?: string | null;
+  providersReportingBalance?: number;
+  providerStatuses?: RechargeProviderDescriptor[];
 }
 
 // Role display helpers

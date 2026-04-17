@@ -3,14 +3,15 @@ import { authMiddleware, AuthRequest } from '../middleware/auth.middleware';
 import { roleMiddleware } from '../middleware/role.middleware';
 import { db } from '../db';
 import { commissionConfigs, commissionDistributions, rechargeTransactions } from '../db/schema';
-import { eq, and, desc, gte, lte, sql } from 'drizzle-orm';
+import { eq, and, desc, gte, lte, sql, inArray } from 'drizzle-orm';
 import { z } from 'zod';
+import { resolveCommissionLookupKeys } from '../services/commission.service';
 
 const router = Router();
 router.use(authMiddleware);
 
 const configSchema = z.object({
-  serviceType: z.string().min(1),
+  serviceType: z.string().trim().min(1).max(50),
   role: z.enum(['STATE_HEAD', 'MASTER_DISTRIBUTOR', 'DISTRIBUTOR', 'RETAILER']),
   commissionType: z.enum(['PERCENTAGE', 'FLAT']),
   commissionValue: z.number().min(0),
@@ -148,27 +149,31 @@ router.get(
   roleMiddleware('SUPER_ADMIN'),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
-      const { amount, serviceType } = req.query;
+      const { amount, serviceType, operator } = req.query;
       if (!amount || !serviceType) {
         res.status(400).json({ error: 'amount and serviceType are required' });
         return;
       }
 
       const rechargeAmount = parseFloat(amount as string);
+      const lookupKeys = resolveCommissionLookupKeys(serviceType as string, operator as string | undefined);
       const roles = ['RETAILER', 'DISTRIBUTOR', 'MASTER_DISTRIBUTOR', 'STATE_HEAD'] as const;
       const preview: Array<{ role: string; type: string; value: string; amount: number }> = [];
 
       for (const role of roles) {
-        const [config] = await db
+        const configs = await db
           .select()
           .from(commissionConfigs)
           .where(
             and(
-              eq(commissionConfigs.serviceType, serviceType as string),
+              inArray(commissionConfigs.serviceType, lookupKeys),
               eq(commissionConfigs.role, role),
               eq(commissionConfigs.isActive, true)
             )
           );
+        const config = lookupKeys
+          .map((key) => configs.find((candidate) => candidate.serviceType === key))
+          .find(Boolean);
 
         if (config) {
           const commValue = parseFloat(config.commissionValue);
@@ -189,6 +194,8 @@ router.get(
       res.json({
         rechargeAmount,
         serviceType,
+        operator: operator || null,
+        lookupKeys,
         distribution: preview,
         totalCommission: preview.reduce((sum, p) => sum + p.amount, 0),
       });

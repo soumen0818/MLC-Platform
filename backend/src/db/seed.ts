@@ -53,9 +53,10 @@ async function seed() {
     // Seed default services
     const currentServices = await db.select().from(schema.services);
     if (currentServices.length === 0) {
+      const defaultProvider = process.env.RECHARGE_DEFAULT_PROVIDER || 'bharatpays';
       await db.insert(schema.services).values([
-        { name: 'Prepaid Mobile', serviceType: 'MOBILE', isActive: true, apiEndpoint: 'bharatpays' },
-        { name: 'DTH Service', serviceType: 'DTH', isActive: true, apiEndpoint: 'bharatpays' },
+        { name: 'Prepaid Mobile', serviceType: 'MOBILE', isActive: true, apiEndpoint: defaultProvider },
+        { name: 'DTH Service', serviceType: 'DTH', isActive: true, apiEndpoint: defaultProvider },
       ]);
       console.log('✅ Default API Services created.');
     } else {

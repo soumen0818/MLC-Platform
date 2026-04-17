@@ -3,86 +3,106 @@ import { rechargeTransactions, users } from '../db/schema';
 import { eq } from 'drizzle-orm';
 import { WalletService } from './wallet.service';
 import { CommissionService } from './commission.service';
+import { getRechargeProvider, listRechargeProviders } from './providers';
+import {
+  PlanLookupInput,
+  ProviderBalanceBreakdown,
+  ProviderDescriptor,
+  ProviderRechargeResult,
+  ProviderWebhookResult,
+  RechargeProviderId,
+  RechargeRequestInput,
+  RechargeServiceType,
+  RechargeTransactionRecord,
+} from './providers/types';
+import { isRecord } from './providers/utils';
 
-interface RechargeRequest {
-  retailerId: string;
-  mobileNumber: string;
-  operator: string;
-  serviceType: 'MOBILE' | 'DTH' | 'ELECTRICITY' | 'GAS' | 'WATER';
-  amount: number;
+interface RechargeResponse {
+  txnId: string;
+  status: 'SUCCESS' | 'FAILED' | 'PENDING' | 'REFUNDED';
+  message: string;
 }
 
-interface ApiResponse {
-  status: 'SUCCESS' | 'FAILED' | 'PENDING';
-  txnId?: string;
-  reason?: string;
-  raw?: any;
+function mergeProviderRaw(
+  existing: unknown,
+  update: Record<string, unknown>
+): Record<string, unknown> {
+  const previous = isRecord(existing) ? existing : {};
+  return {
+    ...previous,
+    ...update,
+    updatedAt: new Date().toISOString(),
+  };
 }
 
-/**
- * BharatPays Prepaid Operator Code Mapping
- * From: https://bbps.bharatpays.in → Operator Codes → Prepaid
- */
-const BHARATPAYS_OPERATOR_CODES: Record<string, string> = {
-  'Airtel': '1',
-  'airtel': '1',
-  'AIRTEL': '1',
-  'Jio': '2',
-  'jio': '2',
-  'JIO': '2',
-  'Vi': '3',
-  'vi': '3',
-  'VI': '3',
-  'Vodafone': '3',
-  'BSNL': '4',
-  'bsnl': '4',
-};
+function resolveDefaultProvider(serviceType: RechargeServiceType): RechargeProviderId {
+  const envOverride = process.env[`RECHARGE_DEFAULT_PROVIDER_${serviceType}`];
+  const defaultProvider = envOverride || process.env.RECHARGE_DEFAULT_PROVIDER || 'bharatpays';
+
+  if (defaultProvider !== 'bharatpays' && defaultProvider !== 'setu') {
+    return 'bharatpays';
+  }
+
+  return defaultProvider;
+}
 
 export class RechargeService {
-  /**
-   * Process a recharge request
-   */
-  static async processRecharge(request: RechargeRequest): Promise<{
-    txnId: string;
-    status: string;
-    message: string;
-  }> {
-    const { retailerId, mobileNumber, operator, serviceType, amount } = request;
+  static async processRecharge(
+    request: Omit<RechargeRequestInput, 'retailerName' | 'retailerEmail' | 'retailerPhone' | 'provider'> & {
+      provider?: RechargeProviderId;
+    }
+  ): Promise<RechargeResponse> {
+    const providerId = request.provider || resolveDefaultProvider(request.serviceType);
+    const provider = getRechargeProvider(providerId);
 
-    // 1. Verify retailer exists and is active (stateless check first)
     const [retailer] = await db
-      .select()
+      .select({
+        id: users.id,
+        name: users.name,
+        email: users.email,
+        phone: users.phone,
+        role: users.role,
+        isActive: users.isActive,
+      })
       .from(users)
-      .where(eq(users.id, retailerId));
+      .where(eq(users.id, request.retailerId));
 
     if (!retailer) throw new Error('Retailer not found');
     if (!retailer.isActive) throw new Error('Account is not active');
     if (retailer.role !== 'RETAILER') throw new Error('Only retailers can process recharges');
 
-    // 2. Lock funds and create pending transaction atomically
-    let rechargeTxnId: string = '';
+    if (!provider.supportsService(request.serviceType)) {
+      throw new Error(`${provider.name} is not configured for ${request.serviceType} recharges.`);
+    }
+
+    let rechargeTxnId = '';
     try {
       await db.transaction(async (tx) => {
-        // Atomic wallet debit ensures no double-spending
         await WalletService.debitWallet(
-          retailerId,
-          amount,
+          request.retailerId,
+          request.amount,
           'RECHARGE',
           undefined,
-          `${serviceType} recharge for ${mobileNumber}`,
+          `${request.serviceType} recharge for ${request.mobileNumber} via ${provider.name}`,
           tx
         );
 
-        // Create pending transaction record
         const [rechargeTxn] = await tx
           .insert(rechargeTransactions)
           .values({
-            retailerId,
-            mobileNumber,
-            operator,
-            serviceType,
-            amount: amount.toFixed(2),
+            retailerId: request.retailerId,
+            mobileNumber: request.mobileNumber,
+            operator: request.operator,
+            serviceType: request.serviceType,
+            amount: request.amount.toFixed(2),
+            apiProvider: providerId,
             status: 'PENDING',
+            apiResponseRaw: {
+              provider: providerId,
+              requestedProvider: providerId,
+              circle: request.circle || null,
+              planId: request.planId || null,
+            },
           })
           .returning({ id: rechargeTransactions.id });
 
@@ -93,354 +113,220 @@ export class RechargeService {
     }
 
     try {
-      // 3. Call BharatPays recharge API (outside transaction to avoid blocking DB connection!)
-      const apiResponse = await RechargeService.callRechargeApi(
-        mobileNumber,
-        amount,
-        operator,
-        serviceType,
-        rechargeTxnId // Pass our DB ID as reference_id for BharatPays
+      const providerResult = await provider.initiateRecharge({
+        ...request,
+        provider: providerId,
+        retailerName: retailer.name,
+        retailerEmail: retailer.email,
+        retailerPhone: retailer.phone,
+        rechargeTxnId,
+      });
+
+      await this.applyResolution(
+        rechargeTxnId,
+        providerId,
+        providerResult,
       );
 
-      // 4. Handle response atomically based on API result
-      if (apiResponse.status === 'SUCCESS') {
-        await db.transaction(async (tx) => {
-          // Update status
-          await tx
-            .update(rechargeTransactions)
-            .set({
-              apiProvider: 'bharatpays',
-              apiTxnId: apiResponse.txnId || null,
-              apiResponseRaw: apiResponse.raw || null,
-              status: 'SUCCESS',
-              failureReason: apiResponse.reason || null,
-              updatedAt: new Date(),
-            })
-            .where(eq(rechargeTransactions.id, rechargeTxnId));
-
-          // Distribute commissions atomically up the chain
-          await CommissionService.distributeCommissions(
-            rechargeTxnId,
-            retailerId,
-            amount,
-            operator,
-            tx
-          );
-        });
-
-        return {
-          txnId: rechargeTxnId,
-          status: 'SUCCESS',
-          message: 'Recharge successful',
-        };
-      } else if (apiResponse.status === 'FAILED') {
-        await db.transaction(async (tx) => {
-          // Update status
-          await tx
-            .update(rechargeTransactions)
-            .set({
-              apiProvider: 'bharatpays',
-              apiTxnId: apiResponse.txnId || null,
-              apiResponseRaw: apiResponse.raw || null,
-              status: 'FAILED',
-              failureReason: apiResponse.reason || null,
-              updatedAt: new Date(),
-            })
-            .where(eq(rechargeTransactions.id, rechargeTxnId));
-
-          // Refund the retailer seamlessly within the transaction
-          await WalletService.creditWallet(
-            retailerId,
-            amount,
-            'REVERSAL',
-            rechargeTxnId,
-            `Refund for failed ${serviceType} recharge`,
-            tx
-          );
-        });
-
-        return {
-          txnId: rechargeTxnId,
-          status: 'FAILED',
-          message: apiResponse.reason || 'Recharge failed',
-        };
-      } else {
-        // PENDING — keep transaction open, waiting for webhook/callback resolution
-        await db
-          .update(rechargeTransactions)
-          .set({
-            apiProvider: 'bharatpays',
-            apiTxnId: apiResponse.txnId || null,
-            apiResponseRaw: apiResponse.raw || null,
-            status: 'PENDING',
-            updatedAt: new Date(),
-          })
-          .where(eq(rechargeTransactions.id, rechargeTxnId));
-
-        return {
-          txnId: rechargeTxnId,
-          status: 'PENDING',
-          message: 'Recharge is being processed',
-        };
-      }
+      return {
+        txnId: rechargeTxnId,
+        status: providerResult.status,
+        message: this.statusMessage(providerResult),
+      };
     } catch (error: any) {
-      // Network error or timeout — mark as PENDING since money could have left the API provider
       await db
         .update(rechargeTransactions)
         .set({
+          apiProvider: providerId,
           status: 'PENDING',
-          failureReason: error.message,
+          failureReason: error.message || 'Recharge provider request failed',
+          apiResponseRaw: mergeProviderRaw(null, {
+            provider: providerId,
+            initError: error.message || 'Provider request failed',
+          }),
           updatedAt: new Date(),
         })
-        .where(eq(rechargeTransactions.id, rechargeTxnId!));
+        .where(eq(rechargeTransactions.id, rechargeTxnId));
 
       return {
-        txnId: rechargeTxnId!,
+        txnId: rechargeTxnId,
         status: 'PENDING',
         message: 'Recharge submitted, awaiting confirmation',
       };
     }
   }
 
-  /**
-   * Call BharatPays Recharge API
-   * Endpoint: https://bbps.bharatpays.in/api-user/recharge
-   * Params: api_token, opr_code, amount, mobile, reference_id
-   */
-  private static async callRechargeApi(
-    mobileNumber: string,
-    amount: number,
-    operator: string,
-    serviceType: string,
-    referenceId: string
-  ): Promise<ApiResponse> {
-    try {
-      const apiToken = process.env.BHARATPAYS_API_TOKEN;
+  static async applyResolution(
+    rechargeTxnId: string,
+    providerId: RechargeProviderId,
+    resolution: ProviderRechargeResult | ProviderWebhookResult
+  ): Promise<void> {
+    const status = resolution.status || 'PENDING';
 
-      if (!apiToken) {
-        console.error('[RechargeService] BHARATPAYS_API_TOKEN is not configured!');
-        return {
-          status: 'FAILED',
-          reason: 'Recharge service is not configured. Please contact admin.',
-        };
+    await db.transaction(async (dbTx) => {
+      const [txn] = await dbTx
+        .select()
+        .from(rechargeTransactions)
+        .where(eq(rechargeTransactions.id, rechargeTxnId));
+
+      if (!txn) {
+        throw new Error('Recharge transaction not found');
       }
 
-      // Map operator name to BharatPays operator code
-      const oprCode = BHARATPAYS_OPERATOR_CODES[operator];
-      if (!oprCode) {
-        return {
-          status: 'FAILED',
-          reason: `Unknown operator: ${operator}. Supported: Airtel, Jio, Vi, BSNL`,
-        };
+      if (txn.status !== 'PENDING') {
+        return;
       }
 
-      // Build BharatPays recharge URL with query parameters
-      const url = new URL('https://bbps.bharatpays.in/api-user/recharge');
-      url.searchParams.set('api_token', apiToken);
-      url.searchParams.set('opr_code', oprCode);
-      url.searchParams.set('amount', amount.toString());
-      url.searchParams.set('mobile', mobileNumber);
-      url.searchParams.set('reference_id', referenceId);
-
-      console.log(`[RechargeService] Calling BharatPays: mobile=${mobileNumber}, amount=${amount}, opr_code=${oprCode}`);
-
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
+      const raw = mergeProviderRaw(txn.apiResponseRaw, {
+        provider: providerId,
+        lastEvent: status,
+        lastPayload: resolution.raw ?? null,
       });
 
-      const data: any = await response.json();
-
-      console.log(`[RechargeService] BharatPays response:`, JSON.stringify(data));
-
-      // BharatPays response mapping
-      // Response: { success: true/false, message: "...", data: { recharge_id, opr_txn_id, mobile, amount, status, reference_id, remark } }
-      if (data?.success === true) {
-        const rechargeData = data?.data || {};
-        const apiStatus = (rechargeData.status || '').toUpperCase();
-
-        if (apiStatus === 'SUCCESS') {
-          return {
-            status: 'SUCCESS',
-            txnId: rechargeData.recharge_id || rechargeData.opr_txn_id || null,
-            raw: data,
-          };
-        } else if (apiStatus === 'PENDING') {
-          return {
-            status: 'PENDING',
-            txnId: rechargeData.recharge_id || rechargeData.opr_txn_id || null,
-            raw: data,
-          };
-        } else {
-          // API returned success:true but status is FAILED or unknown
-          return {
-            status: 'FAILED',
-            txnId: rechargeData.recharge_id || null,
-            reason: rechargeData.remark || data.message || 'Recharge failed at operator',
-            raw: data,
-          };
-        }
-      } else {
-        // success: false
-        return {
-          status: 'FAILED',
-          reason: data?.message || 'Recharge request rejected by provider',
-          raw: data,
-        };
-      }
-    } catch (error: any) {
-      console.error('[RechargeService] BharatPays API error:', error.message);
-      // On network error, assume PENDING (safe — don't refund prematurely)
-      return { status: 'PENDING', reason: error.message };
-    }
-  }
-
-  /**
-   * Handle callback from BharatPays recharge provider
-   * Callback format: ?number=...&amount=...&txnId=...&refId=...&status=...&operatorId=...&operatorCode=...&balance=...
-   */
-  static async handleCallback(params: {
-    refId: string;       // Our reference_id (our DB txn ID)
-    txnId: string;       // BharatPays recharge_id
-    status: string;      // Success / Failure / Refunded
-    number?: string;
-    amount?: string;
-    operatorId?: string;
-    operatorCode?: string;
-    balance?: string;
-  }): Promise<void> {
-    const { refId, txnId, status } = params;
-
-    // Find our transaction by ID (refId is our DB ID)
-    const [txn] = await db
-      .select()
-      .from(rechargeTransactions)
-      .where(eq(rechargeTransactions.id, refId));
-
-    if (!txn) {
-      console.error(`[Callback] Transaction not found for refId: ${refId}`);
-      throw new Error('Transaction not found');
-    }
-
-    if (txn.status !== 'PENDING') {
-      console.log(`[Callback] Transaction ${refId} already resolved as ${txn.status} — skipping`);
-      return; // Idempotency check
-    }
-
-    const amount = parseFloat(txn.amount);
-    const normalizedStatus = status?.toLowerCase();
-
-    if (normalizedStatus === 'success') {
-      await db.transaction(async (dbTx) => {
+      if (status === 'SUCCESS') {
         await dbTx
           .update(rechargeTransactions)
           .set({
-            apiTxnId: txnId || txn.apiTxnId,
-            apiResponseRaw: params,
+            apiProvider: providerId,
+            apiTxnId: resolution.txnId || txn.apiTxnId,
+            apiResponseRaw: raw,
             status: 'SUCCESS',
+            failureReason: null,
             updatedAt: new Date(),
           })
-          .where(eq(rechargeTransactions.id, txn.id));
+          .where(eq(rechargeTransactions.id, rechargeTxnId));
 
         await CommissionService.distributeCommissions(
-          txn.id,
+          rechargeTxnId,
           txn.retailerId,
-          amount,
+          parseFloat(txn.amount),
+          txn.serviceType,
           txn.operator,
           dbTx
         );
-      });
-      console.log(`[Callback] Transaction ${refId} resolved → SUCCESS`);
-    } else if (normalizedStatus === 'failure' || normalizedStatus === 'failed') {
-      await db.transaction(async (dbTx) => {
-        await dbTx
-          .update(rechargeTransactions)
-          .set({
-            apiTxnId: txnId || txn.apiTxnId,
-            apiResponseRaw: params,
-            status: 'FAILED',
-            failureReason: 'Confirmed failed via BharatPays callback',
-            updatedAt: new Date(),
-          })
-          .where(eq(rechargeTransactions.id, txn.id));
 
-        await WalletService.creditWallet(
-          txn.retailerId,
-          amount,
-          'REVERSAL',
-          txn.id,
-          'Refund — recharge failed (provider callback)',
-          dbTx
-        );
-
-        await CommissionService.reverseCommissions(txn.id, dbTx);
-      });
-      console.log(`[Callback] Transaction ${refId} resolved → FAILED, retailer refunded`);
-    } else if (normalizedStatus === 'refunded') {
-      await db.transaction(async (dbTx) => {
-        await dbTx
-          .update(rechargeTransactions)
-          .set({
-            apiTxnId: txnId || txn.apiTxnId,
-            apiResponseRaw: params,
-            status: 'REFUNDED',
-            failureReason: 'Refunded by operator via BharatPays callback',
-            updatedAt: new Date(),
-          })
-          .where(eq(rechargeTransactions.id, txn.id));
-
-        await WalletService.creditWallet(
-          txn.retailerId,
-          amount,
-          'REVERSAL',
-          txn.id,
-          'Refund — recharge refunded by operator',
-          dbTx
-        );
-
-        await CommissionService.reverseCommissions(txn.id, dbTx);
-      });
-      console.log(`[Callback] Transaction ${refId} resolved → REFUNDED, retailer refunded`);
-    }
-  }
-
-  /**
-   * Check status of a transaction via BharatPays Status Check API
-   * Endpoint: https://bbps.bharatpays.in/api-user/status-check
-   * Params: api_token, reference_id, recharge_date (YYYY-MM-DD)
-   */
-  static async checkStatus(referenceId: string, rechargeDate: string): Promise<ApiResponse> {
-    const apiToken = process.env.BHARATPAYS_API_TOKEN;
-
-    if (!apiToken) {
-      return { status: 'PENDING', reason: 'No API token configured — demo mode' };
-    }
-
-    try {
-      const url = new URL('https://bbps.bharatpays.in/api-user/status-check');
-      url.searchParams.set('api_token', apiToken);
-      url.searchParams.set('reference_id', referenceId);
-      url.searchParams.set('recharge_date', rechargeDate);
-
-      const response = await fetch(url.toString(), {
-        method: 'GET',
-        headers: { 'Accept': 'application/json' },
-      });
-
-      const data: any = await response.json();
-
-      if (data?.success === true) {
-        const rechargeData = data?.data || {};
-        const apiStatus = (rechargeData.status || '').toUpperCase();
-
-        if (apiStatus === 'SUCCESS') return { status: 'SUCCESS', txnId: rechargeData.recharge_id, raw: data };
-        if (apiStatus === 'FAILED') return { status: 'FAILED', txnId: rechargeData.recharge_id, reason: rechargeData.remark, raw: data };
-        return { status: 'PENDING', txnId: rechargeData.recharge_id, raw: data };
+        return;
       }
 
-      return { status: 'PENDING', reason: data?.message, raw: data };
-    } catch (error: any) {
-      return { status: 'PENDING', reason: error.message };
+      if (status === 'FAILED' || status === 'REFUNDED') {
+        await dbTx
+          .update(rechargeTransactions)
+          .set({
+            apiProvider: providerId,
+            apiTxnId: resolution.txnId || txn.apiTxnId,
+            apiResponseRaw: raw,
+            status,
+            failureReason: resolution.reason || (status === 'REFUNDED' ? 'Recharge refunded by provider' : 'Recharge failed'),
+            updatedAt: new Date(),
+          })
+          .where(eq(rechargeTransactions.id, rechargeTxnId));
+
+        await WalletService.creditWallet(
+          txn.retailerId,
+          parseFloat(txn.amount),
+          'REVERSAL',
+          rechargeTxnId,
+          status === 'REFUNDED' ? 'Refund for provider reversal' : `Refund for failed ${txn.serviceType} recharge`,
+          dbTx,
+          'MAIN'
+        );
+
+        await CommissionService.reverseCommissions(rechargeTxnId, dbTx);
+        return;
+      }
+
+      await dbTx
+        .update(rechargeTransactions)
+        .set({
+          apiProvider: providerId,
+          apiTxnId: resolution.txnId || txn.apiTxnId,
+          apiResponseRaw: raw,
+          status: 'PENDING',
+          failureReason: resolution.reason || txn.failureReason,
+          updatedAt: new Date(),
+        })
+        .where(eq(rechargeTransactions.id, rechargeTxnId));
+    });
+  }
+
+  static async checkStatus(txn: RechargeTransactionRecord): Promise<ProviderRechargeResult> {
+    const providerId = (txn.apiProvider as RechargeProviderId | null) || 'bharatpays';
+    const provider = getRechargeProvider(providerId);
+    return provider.checkStatus(txn);
+  }
+
+  static async handleProviderWebhook(
+    providerId: RechargeProviderId,
+    payload: unknown,
+    headers: Record<string, string | string[] | undefined>
+  ): Promise<{ received: true; ignored?: boolean }> {
+    const provider = getRechargeProvider(providerId);
+    const resolution = await provider.handleWebhook(payload, headers);
+
+    if (!resolution || !resolution.rechargeTxnId || !resolution.status) {
+      return { received: true, ignored: true };
     }
+
+    await this.applyResolution(resolution.rechargeTxnId, providerId, resolution);
+    return { received: true };
+  }
+
+  static listProviders(): ProviderDescriptor[] {
+    return listRechargeProviders().map((provider) => provider.getDescriptor());
+  }
+
+  static async listProviderStatuses(): Promise<Array<ProviderDescriptor & {
+    healthy?: boolean;
+    balance?: string | null;
+    balances?: ProviderBalanceBreakdown;
+    message?: string | null;
+  }>> {
+    const providers = listRechargeProviders();
+    const results = await Promise.all(
+      providers.map(async (provider) => {
+        const descriptor = provider.getDescriptor();
+        const operationalStatus = provider.getOperationalStatus
+          ? await provider.getOperationalStatus()
+          : { configured: descriptor.configured, healthy: descriptor.configured, balance: null, message: null };
+
+        return {
+          ...descriptor,
+          healthy: operationalStatus.healthy,
+          balance: operationalStatus.balance ?? null,
+          balances: operationalStatus.balances ?? undefined,
+          message: operationalStatus.message ?? null,
+        };
+      })
+    );
+
+    return results;
+  }
+
+  static async getPlans(
+    providerId: RechargeProviderId,
+    input: PlanLookupInput
+  ) {
+    const provider = getRechargeProvider(providerId);
+    if (!provider.getPlans) {
+      throw new Error(`${provider.name} does not provide plan lookup.`);
+    }
+
+    return provider.getPlans(input);
+  }
+
+  private static statusMessage(result: ProviderRechargeResult): string {
+    if (result.status === 'SUCCESS') {
+      return 'Recharge successful';
+    }
+
+    if (result.status === 'FAILED') {
+      return result.reason || 'Recharge failed';
+    }
+
+    if (result.status === 'REFUNDED') {
+      return result.reason || 'Recharge refunded';
+    }
+
+    return 'Recharge is being processed';
   }
 }

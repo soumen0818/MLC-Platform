@@ -7,6 +7,7 @@ interface Service {
   name: string;
   serviceType: string;
   isActive: boolean;
+  apiEndpoint?: string | null;
 }
 
 export default function ServicesPage() {
@@ -71,6 +72,7 @@ export default function ServicesPage() {
                   <div>
                     <h3 className="text-[14px] font-bold text-text-primary">{s.name}</h3>
                     <p className="text-[11px] text-text-secondary font-mono tracking-widest">{s.serviceType}</p>
+                    <p className="text-[11px] text-text-muted mt-1">Default provider: {s.apiEndpoint || 'not set'}</p>
                   </div>
                 </div>
                 

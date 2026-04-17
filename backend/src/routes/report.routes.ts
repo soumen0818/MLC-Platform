@@ -4,9 +4,19 @@ import { roleMiddleware } from '../middleware/role.middleware';
 import { db } from '../db';
 import { rechargeTransactions, commissionDistributions, walletTransactions, users, withdrawalRequests } from '../db/schema';
 import { eq, and, gte, lte, sql, desc, count } from 'drizzle-orm';
+import { RechargeService } from '../services/recharge.service';
 
 const router = Router();
 router.use(authMiddleware);
+
+function toNumericAmount(value?: string | null): number | null {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
 
 // GET /api/reports/daily — admin daily recharge report
 router.get(
@@ -114,38 +124,41 @@ router.get('/dashboard-stats', async (req: AuthRequest, res: Response): Promise<
         .from(users)
         .where(sql`role != 'SUPER_ADMIN'`);
 
-      // Fetch live B2B Wallet Balance from BharatPays Provider
-      let providerBalance = '0.00';
-      try {
-        const apiToken = process.env.BHARATPAYS_API_TOKEN;
-        const username = process.env.BHARATPAYS_USERNAME;
-        if (apiToken && username) {
-          const url = `https://bbps.bharatpays.in/api-user/balance?username=${username}&api_token=${apiToken}`;
-          
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 5000); // 5-second timeout
-          
-          const res = await fetch(url, { 
-            method: 'GET', 
-            headers: { 'Accept': 'application/json' },
-            signal: controller.signal 
-          });
-          clearTimeout(timeout);
-          
-          if (res.ok) {
-             const data = await res.json() as any;
-             if (data && data.status === 'Ok' && data.totalBalance) {
-               providerBalance = parseFloat(data.totalBalance).toFixed(2);
-             } else {
-               console.warn('[Report] BharatPays balance warn:', data);
-             }
-          } else {
-             console.error(`[Report] BharatPays check failed: HTTP ${res.status}`);
+      const providerStatuses = await RechargeService.listProviderStatuses();
+      const providerTotals = providerStatuses.reduce(
+        (summary, provider) => {
+          const trade = toNumericAmount(provider.balances?.trade);
+          const recharge = toNumericAmount(provider.balances?.recharge);
+          const total =
+            toNumericAmount(provider.balances?.total ?? provider.balance) ??
+            (trade !== null || recharge !== null ? (trade || 0) + (recharge || 0) : null);
+
+          if (trade !== null) {
+            summary.trade += trade;
+            summary.tradeSources += 1;
           }
+
+          if (recharge !== null) {
+            summary.recharge += recharge;
+            summary.rechargeSources += 1;
+          }
+
+          if (total !== null) {
+            summary.total += total;
+            summary.totalSources += 1;
+          }
+
+          return summary;
+        },
+        {
+          total: 0,
+          trade: 0,
+          recharge: 0,
+          totalSources: 0,
+          tradeSources: 0,
+          rechargeSources: 0,
         }
-      } catch (err: any) {
-        console.error('[Report] Failed to fetch BharatPays provider balance:', err.name, err.message);
-      }
+      );
 
       res.json({
         totalUsers: userStats.totalUsers,
@@ -155,7 +168,11 @@ router.get('/dashboard-stats', async (req: AuthRequest, res: Response): Promise<
         todayCommissionsPaid: todayCommissions.totalPaid,
         pendingWithdrawals: pendingWithdrawals.count,
         platformLiquidity: walletPool.totalLiquidity,
-        providerLiquidity: providerBalance,
+        providerFundsTotal: providerTotals.totalSources > 0 ? providerTotals.total.toFixed(2) : null,
+        providerTradeBalance: providerTotals.tradeSources > 0 ? providerTotals.trade.toFixed(2) : null,
+        providerRechargeBalance: providerTotals.rechargeSources > 0 ? providerTotals.recharge.toFixed(2) : null,
+        providersReportingBalance: providerTotals.totalSources,
+        providerStatuses,
       });
     } else if (role === 'RETAILER') {
       // Retailer stats

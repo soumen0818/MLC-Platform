@@ -12,7 +12,7 @@ router.use(authMiddleware);
 const serviceSchema = z.object({
   name: z.string().min(1),
   serviceType: z.enum(['MOBILE', 'DTH', 'ELECTRICITY', 'GAS', 'WATER']),
-  apiEndpoint: z.string().url().optional(),
+  apiEndpoint: z.string().min(1).optional(),
   isActive: z.boolean().default(true),
 });
 
