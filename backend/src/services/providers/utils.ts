@@ -10,7 +10,7 @@ export async function fetchJson<T>(
   input: string | URL,
   init: RequestInit = {},
   timeoutMs: number = 10000
-): Promise<{ response: Response; data: T }> {
+): Promise<{ response: Response; data: T; rawText: string }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -19,8 +19,28 @@ export async function fetchJson<T>(
       ...init,
       signal: controller.signal,
     });
-    const data = (await response.json()) as T;
-    return { response, data };
+    const rawText = await response.text();
+    const trimmed = rawText.trim();
+
+    let data = {} as T;
+
+    if (trimmed) {
+      const contentType = response.headers.get('content-type') || '';
+      const looksLikeJson =
+        /json/i.test(contentType) ||
+        trimmed.startsWith('{') ||
+        trimmed.startsWith('[');
+
+      if (looksLikeJson) {
+        try {
+          data = JSON.parse(trimmed) as T;
+        } catch {
+          data = {} as T;
+        }
+      }
+    }
+
+    return { response, data, rawText };
   } finally {
     clearTimeout(timeout);
   }

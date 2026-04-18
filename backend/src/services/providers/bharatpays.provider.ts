@@ -119,6 +119,20 @@ function normalizeOperationalMessage(message?: string): string | null {
   return message;
 }
 
+function deriveRawResponseMessage(rawText: string): string | null {
+  const trimmed = rawText.trim();
+
+  if (!trimmed) {
+    return 'BharatPays returned an empty balance response.';
+  }
+
+  if (trimmed.startsWith('<')) {
+    return 'BharatPays returned a non-JSON balance response.';
+  }
+
+  return trimmed.slice(0, 160);
+}
+
 function mapApiStatus(data: BharatPaysResponse): ProviderRechargeResult {
   if (data?.success === true) {
     const rechargeData = data.data ?? {};
@@ -352,7 +366,7 @@ export class BharatPaysProvider implements RechargeProvider {
       url.searchParams.set('username', username);
       url.searchParams.set('api_token', apiToken);
 
-      const { response, data } = await fetchJson<BharatPaysResponse>(
+      const { response, data, rawText } = await fetchJson<BharatPaysResponse>(
         url,
         {
           method: 'GET',
@@ -363,6 +377,7 @@ export class BharatPaysProvider implements RechargeProvider {
 
       const balances = resolveBharatPaysBalances(data);
       const normalizedMessage = normalizeOperationalMessage(data?.message);
+      const rawResponseMessage = deriveRawResponseMessage(rawText);
 
       if (response.ok && ((data?.status || '').toLowerCase() === 'ok' || data?.success === true)) {
         return {
@@ -379,7 +394,7 @@ export class BharatPaysProvider implements RechargeProvider {
         healthy: false,
         balance: balances.total,
         balances,
-        message: normalizedMessage || `Unexpected HTTP ${response.status}`,
+        message: normalizedMessage || rawResponseMessage || `Unexpected HTTP ${response.status}`,
       };
     } catch (error: any) {
       return {
