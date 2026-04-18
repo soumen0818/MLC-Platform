@@ -12,7 +12,7 @@
     "routes": [
         {
             "src": "/api/(.*)",
-            "dest": "http://43.205.45.164/api/$1"
+            "dest": "http://13.201.151.123/api/$1"
         },
         {
             "handle": "filesystem"
